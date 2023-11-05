@@ -1,123 +1,56 @@
-use actix::prelude::*;
+use actix::clock::sleep;
+use actix::Actor;
+use concurrentes::{orders::Orders, shop::Shop};
+use std::env;
+use std::path::Path;
 
-#[derive(Debug)]
-struct Shop {
-    name: String,
-    address: String,
-    location: u32,
-    stock: Vec<Product>,
-}
+const CANT_ARGS: usize = 3;
 
-impl Actor for Shop {
-    type Context = Context<Self>;
-}
+// 1. Hacer tienda.txt para generar una Tienda con su info y stock
+// agregar impl para crearlo
 
-#[derive(Debug)]
-enum PurchaseError {
-    OutOfStock,
-    NotDelivered,
-}
+// 2. Hacer un structs para leer pedidos de un txt
 
-// Message
-#[derive(Debug, Message)]
-#[rtype(result = "Result<(), PurchaseError>")]
-struct LocalPurchase {
-    product_id: String,
-    quantity: u32,
-}
+// struct con vec<Pedidos> que tenga un impl crearlo
 
-impl Handler<LocalPurchase> for Shop {
-    type Result = Result<(), PurchaseError>;
-
-    fn handle(&mut self, msg: LocalPurchase, _ctx: &mut Context<Self>) -> Self::Result {
-        let product = self
-            .stock
-            .iter_mut()
-            .find(|p| p.id == msg.product_id)
-            .ok_or(PurchaseError::OutOfStock)?;
-
-        if product.stock < msg.quantity {
-            return Err(PurchaseError::OutOfStock);
-        }
-
-        product.stock -= msg.quantity;
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, Message)]
-#[rtype(result = "()")]
-struct Print;
-
-impl Handler<Print> for Shop {
-    type Result = ();
-
-    fn handle(&mut self, _msg: Print, _ctx: &mut Context<Self>) -> Self::Result {
-        println!("{:?}", self);
-    }
-}
-
-#[derive(Debug)]
-struct Product {
-    id: String,
-    stock: u32,
-    reserved: u32,
-}
+// 3. agregar prints piolas en los handlers y sleeps etc
 
 #[actix_rt::main]
 async fn main() {
-    let shop = Shop {
-        name: "My Shop".to_string(),
-        address: "123 Main St".to_string(),
-        location: 1,
-        stock: vec![
-            Product {
-                id: "manzana".to_string(),
-                stock: 10,
-                reserved: 0,
-            },
-            Product {
-                id: "banana".to_string(),
-                stock: 11,
-                reserved: 0,
-            },
-        ],
+    let args: Vec<String> = env::args().collect();
+    if args.len() < CANT_ARGS {
+        println!("ERROR: shop files not provided");
+        return;
+    }
+    let path_shop = Path::new(&args[1]);
+    if !path_shop.exists() {
+        println!("ERROR: path from shop information does not exist");
+        return;
+    }
+    let path_orders = Path::new(&args[2]);
+    if !path_orders.exists() {
+        println!("ERROR: path from orders information does not exist");
+        return;
+    }
+
+    let shop = match Shop::from_file(args[1].as_str()) {
+        Ok(shop) => shop,
+        Err(error) => {
+            println!("ERROR shop: {:?}", error);
+            return;
+        }
     }
     .start();
 
-    shop.send(Print).await.unwrap();
+    let orders = match Orders::from_file(args[2].as_str()) {
+        Ok(orders) => orders,
+        Err(error) => {
+            println!("ERROR orders: {:?}", error);
+            return;
+        }
+    };
 
-    let result = shop
-        .send(LocalPurchase {
-            product_id: "manzana".to_string(),
-            quantity: 5,
-        })
-        .await
-        .unwrap();
-
-    println!("{:?}", result);
-    shop.send(Print).await.unwrap();
-
-    let result = shop
-        .send(LocalPurchase {
-            product_id: "manzana".to_string(),
-            quantity: 3,
-        })
-        .await
-        .unwrap();
-
-    println!("{:?}", result);
-    shop.send(Print).await.unwrap();
-
-    let result = shop
-        .send(LocalPurchase {
-            product_id: "manzana".to_string(),
-            quantity: 7,
-        })
-        .await
-        .unwrap();
-
-    println!("{:?}", result);
-    shop.send(Print).await.unwrap();
+    for order in orders.list {
+        let a = shop.send(order).await.unwrap();
+    }
 }
