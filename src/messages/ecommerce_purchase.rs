@@ -5,15 +5,15 @@ use actix::Message;
 #[derive(Debug, Message)]
 #[rtype(result = "Result<(), PurchaseError>")]
 
-pub struct LocalPurchase {
+pub struct EcommercePurchase {
     pub product_id: String,
     pub quantity: u32,
 }
 
-impl LocalPurchase {
+impl EcommercePurchase {
     pub fn print_cancelled(&self) {
         println!(
-            "[LOCAL] Rechazado {:>2} x {}, no hay stock",
+            "[ECOMM] Rechazado {:>2} x {}, no hay stock",
             self.quantity, self.product_id
         );
     }
