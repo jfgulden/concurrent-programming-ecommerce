@@ -1,11 +1,12 @@
 use crate::error::{FileError, PurchaseError};
+use crate::messages::ecommerce_purchase::EcommercePurchase;
 use crate::messages::local_purchase::*;
 use crate::messages::print::Print;
-use actix::clock::sleep;
-use actix::{Actor, ActorFutureExt, Context, Handler, WrapFuture};
+use actix::{Actor, ActorFutureExt, Context, Handler, ResponseActFuture, WrapFuture};
+use actix_rt::time::sleep;
+use rand::{thread_rng, Rng};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
-use std::thread;
 use std::time::Duration;
 
 #[derive(Debug)]
@@ -97,23 +98,18 @@ impl Handler<LocalPurchase> for Shop {
     type Result = Result<(), PurchaseError>;
 
     fn handle(&mut self, msg: LocalPurchase, _ctx: &mut Context<Self>) -> Self::Result {
-        thread::sleep(Duration::from_millis(1000));
+        // thread::sleep(Duration::from_millis(thread_rng().gen_range(500..1500)));
+
         let product = match self.stock.iter_mut().find(|p| p.id == msg.product_id) {
             Some(product) => product,
             None => {
-                println!(
-                    "[LOCAL] Rechazado {:>2} x {}, no hay stock",
-                    msg.quantity, msg.product_id
-                ); // Error
+                msg.print_cancelled();
                 return Err(PurchaseError::OutOfStock);
             }
         };
 
         if product.stock < msg.quantity {
-            println!(
-                "[LOCAL] Rechazado {:>2} x {}, no hay stock",
-                msg.quantity, msg.product_id
-            ); // Error
+            msg.print_cancelled();
             return Err(PurchaseError::OutOfStock);
         }
 
@@ -125,12 +121,24 @@ impl Handler<LocalPurchase> for Shop {
         );
 
         Ok(())
+    }
+}
 
-        // Box::pin(sleep(Duration::from_secs(msg.0))
-        //     .into_actor(self)
-        //     .map(move |_result, me, _ctx| {
-        //         println!("[{}] desperté de {}", me.id, msg.0);
-        //     }))
+impl Handler<EcommercePurchase> for Shop {
+    type Result = ResponseActFuture<Self, Result<(), PurchaseError>>;
+
+    fn handle(&mut self, msg: EcommercePurchase, _ctx: &mut Context<Self>) -> Self::Result {
+        // thread::sleep(Duration::from_millis(thread_rng().gen_range(500..1500)));
+
+        println!("[ECOMM] Reserva   {:>2} x {}", msg.quantity, msg.product_id);
+
+        let millis = thread_rng().gen_range(500..=500);
+        Box::pin(sleep(Duration::from_millis(millis)).into_actor(self).map(
+            move |_result, _me, _ctx| {
+                println!("[ECOMM] Entregado {:>2} x {}", msg.quantity, msg.product_id);
+                Ok(())
+            },
+        ))
     }
 }
 
