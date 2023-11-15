@@ -13,7 +13,7 @@ pub struct LocalPurchase {
 impl LocalPurchase {
     pub fn print_cancelled(&self) {
         println!(
-            "[LOCAL] Rechazado {:>2} x {}, no hay stock",
+            "[LOCAL]  Rechazado {:>2} x {}, no hay stock",
             self.quantity, self.product_id
         );
     }

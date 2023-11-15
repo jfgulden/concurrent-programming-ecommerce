@@ -116,7 +116,7 @@ impl Handler<LocalPurchase> for Shop {
         product.stock -= msg.quantity;
 
         println!(
-            "[LOCAL] Vendido   {:>2} x {}, quedan {}",
+            "[LOCAL]  Vendido   {:>2} x {}, quedan {}",
             msg.quantity, msg.product_id, product.stock
         );
 
@@ -130,12 +130,34 @@ impl Handler<EcommercePurchase> for Shop {
     fn handle(&mut self, msg: EcommercePurchase, _ctx: &mut Context<Self>) -> Self::Result {
         // thread::sleep(Duration::from_millis(thread_rng().gen_range(500..1500)));
 
-        println!("[ECOMM] Reserva   {:>2} x {}", msg.quantity, msg.product_id);
+        let product = self
+            .stock
+            .iter_mut()
+            .find(|p| p.id == msg.product_id)
+            .unwrap();
+
+        if product.stock < msg.quantity {
+            msg.print_cancelled();
+
+            return Box::pin(
+                Box::pin(async move { Err(PurchaseError::OutOfStock) }).into_actor(self),
+            );
+            //retornar error
+        }
+
+        product.stock -= msg.quantity;
+        println!(
+            "[ECOMM]  Reserva   {:>2} x {}",
+            msg.quantity, msg.product_id
+        );
 
         let millis = thread_rng().gen_range(500..=500);
         Box::pin(sleep(Duration::from_millis(millis)).into_actor(self).map(
             move |_result, _me, _ctx| {
-                println!("[ECOMM] Entregado {:>2} x {}", msg.quantity, msg.product_id);
+                println!(
+                    "[ECOMM]  Entregado {:>2} x {}",
+                    msg.quantity, msg.product_id
+                );
                 Ok(())
             },
         ))
