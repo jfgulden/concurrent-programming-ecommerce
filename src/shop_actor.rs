@@ -2,7 +2,9 @@ use crate::error::{FileError, PurchaseError};
 use crate::messages::ecommerce_purchase::EcommercePurchase;
 use crate::messages::local_purchase::*;
 use crate::messages::print::Print;
-use actix::{Actor, ActorFutureExt, Context, Handler, ResponseActFuture, WrapFuture};
+use actix::{
+    Actor, ActorFutureExt, AsyncContext, Context, Handler, Message, ResponseActFuture, WrapFuture,
+};
 use actix_rt::time::sleep;
 use rand::{thread_rng, Rng};
 use std::fs::File;
@@ -124,12 +126,35 @@ impl Handler<LocalPurchase> for Shop {
     }
 }
 
-impl Handler<EcommercePurchase> for Shop {
+#[derive(Debug, Message, Clone)]
+#[rtype(result = "Result<(), PurchaseError>")]
+struct DeliverPurchase {
+    pub purchase: EcommercePurchase,
+    pub delivery_time: u64,
+}
+
+impl Handler<DeliverPurchase> for Shop {
     type Result = ResponseActFuture<Self, Result<(), PurchaseError>>;
+    fn handle(&mut self, msg: DeliverPurchase, _ctx: &mut Context<Self>) -> Self::Result {
+        Box::pin(
+            sleep(Duration::from_millis(msg.delivery_time))
+                .into_actor(self)
+                .map(move |_result, _me, _ctx| {
+                    println!(
+                        "[ECOMM]  Entregado {:>2} x {}",
+                        msg.purchase.quantity, msg.purchase.product_id
+                    );
+                    Ok(())
+                }),
+        )
+    }
+}
+impl Handler<EcommercePurchase> for Shop {
+    type Result = Result<(), PurchaseError>;
 
-    fn handle(&mut self, msg: EcommercePurchase, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: EcommercePurchase, ctx: &mut Context<Self>) -> Self::Result {
         // thread::sleep(Duration::from_millis(thread_rng().gen_range(500..1500)));
-
+        println!("HOLA");
         let product = self
             .stock
             .iter_mut()
@@ -138,11 +163,8 @@ impl Handler<EcommercePurchase> for Shop {
 
         if product.stock < msg.quantity {
             msg.print_cancelled();
-
-            return Box::pin(
-                Box::pin(async move { Err(PurchaseError::OutOfStock) }).into_actor(self),
-            );
-            //retornar error
+            return Err(PurchaseError::OutOfStock);
+            //REVISAR ESTO
         }
 
         product.stock -= msg.quantity;
@@ -150,17 +172,24 @@ impl Handler<EcommercePurchase> for Shop {
             "[ECOMM]  Reserva   {:>2} x {}",
             msg.quantity, msg.product_id
         );
+        let millis = thread_rng().gen_range(500..=1000);
 
-        let millis = thread_rng().gen_range(500..=500);
-        Box::pin(sleep(Duration::from_millis(millis)).into_actor(self).map(
-            move |_result, _me, _ctx| {
-                println!(
-                    "[ECOMM]  Entregado {:>2} x {}",
-                    msg.quantity, msg.product_id
-                );
-                Ok(())
-            },
-        ))
+        ctx.address()
+            .try_send(DeliverPurchase {
+                purchase: msg.clone(),
+                delivery_time: millis,
+            })
+            .map_err(|_| PurchaseError::OutOfStock)?;
+
+        if millis > 800 {
+            //REVISAR
+            println!(
+                "[ECOMM]  No entregado {:>2} x {}",
+                msg.quantity, msg.product_id
+            );
+            return Err(PurchaseError::OutOfStock);
+        }
+        Ok(())
     }
 }
 

@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
+use std::thread;
 
 #[derive(Debug)]
 pub struct Product {
@@ -132,7 +133,6 @@ impl Handler<ProcessOrders> for Ecom {
             };
             let _bytes = shop_stream.write_all(message.as_bytes()).unwrap();
         }
-
         Ok(())
     }
 }

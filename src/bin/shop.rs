@@ -34,7 +34,9 @@ impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
         if let Ok(line) = read {
             let orders = line.split('/').collect::<Vec<&str>>();
             println!("[{:?}] Recibido: {:?}", self.addr, orders);
+
             for order in orders {
+                println!("HOLA en for");
                 let order = order.split(',').collect::<Vec<&str>>();
                 let product_id = order[0].to_string();
                 let quantity = order[1].parse::<u32>().unwrap();
@@ -46,10 +48,20 @@ impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
                 };
 
                 let purchase_clone = purchase.clone();
-                let purchase_state = self.shop_addr.try_send(purchase);
-                if purchase_state.is_err() {
-                    let arc = self.write.clone();
-                    wrap_future::<_, Self>(async move {
+                let shop_addr_clone = self.shop_addr.clone();
+                let write_clone = self.write.clone();
+                println!("HOLA antes del wrap");
+                wrap_future::<_, Self>(async move {
+                    println!("HOLA por mandar el mensaje");
+                    let purchase_state = shop_addr_clone.send(purchase).await.unwrap();
+                    if purchase_state.is_err() {
+                        let arc = write_clone.clone();
+                        println!(
+                            "PEDIDO NO ENTREGADO: {}, {}, {}",
+                            purchase_clone.product_id,
+                            purchase_clone.quantity,
+                            purchase_clone.zone_id
+                        );
                         arc.lock()
                             .await
                             .write_all(
@@ -62,10 +74,10 @@ impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
                                 .as_bytes(),
                             )
                             .await
-                            .expect("Should have sent")
-                    })
-                    .spawn(ctx);
-                }
+                            .expect("Should have sent");
+                    }
+                })
+                .spawn(ctx);
             }
         } else {
             println!("[{:?}] Failed to read line {:?}", self.addr, read);
@@ -78,7 +90,7 @@ impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
     }
 }
 async fn initiate_shop_side_server(shop: actix::Addr<Shop>) {
-    let listener: TcpListener = TcpListener::bind("127.0.0.1:2345").await.unwrap();
+    let listener: TcpListener = TcpListener::bind("127.0.0.1:2346").await.unwrap();
     while let Ok((stream, addr)) = listener.accept().await {
         println!("Se conectó el Ecommerce {:?}", addr);
         ShopSideServer::create(|ctx| {
@@ -137,10 +149,9 @@ fn main() {
             }
         };
         let shop_clone = shop.clone();
-        thread::spawn(move || initiate_shop_side_server(shop_clone));
 
         // let shop_recipient = shop.clone();
-        // thread::spawn(move || handle_ecommerce_purchase(shop_recipient));
+        let handle = thread::spawn(move || initiate_shop_side_server(shop_clone));
 
         let mut a = thread_rng();
         for order in orders.list {
@@ -149,7 +160,8 @@ fn main() {
             let _ = shop.send(order).await.unwrap();
         }
 
-        shop.send(Print).await.unwrap();
+        shop.send(Print).await;
+        handle.join().unwrap().await;
 
         println!("MAIN TERMINADO");
     });
