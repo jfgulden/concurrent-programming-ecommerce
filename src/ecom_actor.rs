@@ -8,6 +8,7 @@ use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::thread;
+use std::time::Duration;
 
 #[derive(Debug)]
 pub struct Product {
@@ -121,21 +122,27 @@ impl Handler<ProcessOrders> for Ecom {
     type Result = Result<(), PurchaseError>;
 
     fn handle(&mut self, _msg: ProcessOrders, _ctx: &mut Self::Context) -> Self::Result {
-        for (index, order) in self.orders.iter().enumerate() {
+        for (_index, order) in self.orders.iter().enumerate() {
             //lógica para saber a donde mandar (que zona)
             //estaría bueno que el hashmap guarde lat y long y cada pedido tenga su lat y long.
             //de esa forma compararíamos las distancias y mandaríamos el pedido a la tienda más cercana
             let mut shop_stream = self.streams.get(&order.zone_id).unwrap();
-            let message = if index == self.orders.len() - 1 {
-                format!("{},{},{}", order.product_id, order.quantity, order.zone_id)
-            } else {
-                format!("{},{},{}/", order.product_id, order.quantity, order.zone_id)
-            };
+            // let message = if index == self.orders.len() - 1 {
+            //     format!("{},{},{}", order.product_id, order.quantity, order.zone_id)
+            // } else {
+            //     format!("{},{},{}/", order.product_id, order.quantity, order.zone_id)
+            // };
+            let message = format!(
+                "{},{},{}\n",
+                order.product_id, order.quantity, order.zone_id
+            );
             let _bytes = shop_stream.write_all(message.as_bytes()).unwrap();
+            thread::sleep(Duration::from_millis(100));
         }
         Ok(())
     }
 }
+
 impl Handler<EcommercePurchase> for Ecom {
     type Result = Result<(), PurchaseError>; //ResponseActFuture<Self,
 

@@ -32,55 +32,76 @@ impl Actor for ShopSideServer {
 impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
     fn handle(&mut self, read: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(line) = read {
-            let orders = line.split('/').collect::<Vec<&str>>();
-            println!("[{:?}] Recibido: {:?}", self.addr, orders);
+            println!("[{:?}] Recibido: {:?}", self.addr, line);
 
-            for order in orders {
-                println!("HOLA en for");
-                let order = order.split(',').collect::<Vec<&str>>();
-                let product_id = order[0].to_string();
-                let quantity = order[1].parse::<u32>().unwrap();
-                let zone_id = order[2].parse::<u8>().unwrap();
-                let purchase = EcommercePurchase {
-                    product_id,
-                    quantity,
-                    zone_id,
-                };
+            let order = line.split(',').collect::<Vec<&str>>();
+            let product_id = order[0].to_string();
+            let quantity = order[1].parse::<u32>().unwrap();
+            let zone_id = order[2].parse::<u8>().unwrap();
+            let purchase = EcommercePurchase {
+                product_id,
+                quantity,
+                zone_id,
+            };
 
-                let purchase_clone = purchase.clone();
-                let shop_addr_clone = self.shop_addr.clone();
-                let write_clone = self.write.clone();
-                println!("HOLA antes del wrap");
-                wrap_future::<_, Self>(async move {
-                    println!("HOLA por mandar el mensaje");
-                    let purchase_state = shop_addr_clone.send(purchase).await.unwrap();
-                    if purchase_state.is_err() {
-                        let arc = write_clone.clone();
-                        println!(
-                            "PEDIDO NO ENTREGADO: {}, {}, {}",
-                            purchase_clone.product_id,
-                            purchase_clone.quantity,
-                            purchase_clone.zone_id
-                        );
-                        arc.lock()
-                            .await
-                            .write_all(
-                                format!(
-                                    "{},{},{},REJECTED",
-                                    purchase_clone.product_id,
-                                    purchase_clone.quantity,
-                                    purchase_clone.zone_id
-                                )
-                                .as_bytes(),
-                            )
-                            .await
-                            .expect("Should have sent");
-                    }
-                })
-                .spawn(ctx);
-            }
-        } else {
-            println!("[{:?}] Failed to read line {:?}", self.addr, read);
+            let purchase_clone = purchase.clone();
+            let shop_addr_clone = self.shop_addr.clone();
+            let write_clone = self.write.clone();
+
+            shop_addr_clone
+                .try_send((purchase_clone, write_clone))
+                .unwrap();
+
+            //     let orders = line.split('/').collect::<Vec<&str>>();
+            //     println!("[{:?}] Recibido: {:?}", self.addr, orders);
+
+            //     for order in orders {
+            //         println!("HOLA en for");
+            //         let order = order.split(',').collect::<Vec<&str>>();
+            //         let product_id = order[0].to_string();
+            //         let quantity = order[1].parse::<u32>().unwrap();
+            //         let zone_id = order[2].parse::<u8>().unwrap();
+            //         let purchase = EcommercePurchase {
+            //             product_id,
+            //             quantity
+            //             zone_id,
+            //         };,
+
+            //         let purchase_clone = purchase.clone();
+            //         let shop_addr_clone = self.shop_addr.clone();
+            //         let write_clone = self.write.clone();
+            //         println!("HOLA antes del wrap");
+            //         wrap_future::<_, Self>(async move {
+            //             println!("HOLA por mandar el mensaje");
+            //             let purchase_state = shop_addr_clone.send(purchase).await.unwrap();
+            //             if purchase_state.is_err() {
+            //                 let arc = write_clone.clone();
+            //                 println!(
+            //                     "PEDIDO NO ENTREGADO: {}, {}, {}",
+            //                     purchase_clone.product_id,
+            //                     purchase_clone.quantity,
+            //                     purchase_clone.zone_id
+            //                 );
+            //                 arc.lock()
+            //                     .await
+            //                     .write_all(
+            //                         format!(
+            //                             "{},{},{},REJECTED",
+            //                             purchase_clone.product_id,
+            //                             purchase_clone.quantity,
+            //                             purchase_clone.zone_id
+            //                         )
+            //                         .as_bytes(),
+            //                     )
+            //                     .await
+            //                     .expect("Should have sent");
+            //             }
+            //         })
+            //         .spawn(ctx);
+            //     }
+            // } else {
+            //     println!("[{:?}] Failed to read line {:?}", self.addr, read);
+            // }
         }
     }
 
