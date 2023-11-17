@@ -6,11 +6,6 @@ use std::{env, path::Path, thread, time::Duration};
 
 const CANT_ARGS: usize = 2;
 
-fn handle_ecommerce_orders(ecom_clone: Addr<Ecom>) {
-    let mut a = thread_rng();
-    thread::sleep(Duration::from_millis(a.gen_range(100..=300)));
-    let _orders_status = ecom_clone.try_send(ProcessOrders());
-}
 fn main() {
     let system = System::new();
 
@@ -34,12 +29,10 @@ fn main() {
             }
         }
         .start();
-        thread::sleep(Duration::from_millis(3000));
-        let ecom_clone = ecom.clone();
 
-        let handle = thread::spawn(move || handle_ecommerce_orders(ecom_clone));
+        // thread::sleep(Duration::from_millis(3000));
+        ecom.try_send(ProcessOrders()).unwrap();
 
-        handle.join().unwrap();
         println!("MAIN TERMINADO");
     });
     system.run().unwrap();

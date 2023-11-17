@@ -1,4 +1,3 @@
-use actix::fut::wrap_future;
 use actix_rt::System;
 use concurrentes::messages::ecommerce_purchase::EcommercePurchase;
 use concurrentes::messages::print::Print;
@@ -6,12 +5,12 @@ use concurrentes::{orders::Orders, shop_actor::Shop};
 use rand::{thread_rng, Rng};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::io::{split, AsyncBufReadExt, AsyncWriteExt, BufReader, WriteHalf};
+use tokio::io::{split, AsyncBufReadExt, BufReader, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use tokio_stream::wrappers;
 extern crate actix;
-use actix::{Actor, ActorContext, Context, ContextFutureSpawner, StreamHandler};
+use actix::{Actor, ActorContext, Context, StreamHandler};
 use std::path::Path;
 use std::time::Duration;
 use std::{env, thread};
@@ -19,7 +18,6 @@ use std::{env, thread};
 const CANT_ARGS: usize = 3;
 
 struct ShopSideServer {
-    // write: Option<WriteHalf<TcpStream>>,
     write: Arc<Mutex<WriteHalf<TcpStream>>>,
     addr: SocketAddr,
     shop_addr: actix::Addr<Shop>, //Lo vamos a usar para mandar msg al actor
@@ -35,73 +33,22 @@ impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
             println!("[{:?}] Recibido: {:?}", self.addr, line);
 
             let order = line.split(',').collect::<Vec<&str>>();
-            let product_id = order[0].to_string();
-            let quantity = order[1].parse::<u32>().unwrap();
-            let zone_id = order[2].parse::<u8>().unwrap();
+            let id = order[0].parse::<u8>().unwrap();
+            let product_id = order[1].to_string();
+            let quantity = order[2].parse::<u32>().unwrap();
+            let zone_id = order[3].parse::<u8>().unwrap();
             let purchase = EcommercePurchase {
+                id,
                 product_id,
                 quantity,
                 zone_id,
+                write: self.write.clone(),
             };
 
             let purchase_clone = purchase.clone();
             let shop_addr_clone = self.shop_addr.clone();
-            let write_clone = self.write.clone();
 
-            shop_addr_clone
-                .try_send((purchase_clone, write_clone))
-                .unwrap();
-
-            //     let orders = line.split('/').collect::<Vec<&str>>();
-            //     println!("[{:?}] Recibido: {:?}", self.addr, orders);
-
-            //     for order in orders {
-            //         println!("HOLA en for");
-            //         let order = order.split(',').collect::<Vec<&str>>();
-            //         let product_id = order[0].to_string();
-            //         let quantity = order[1].parse::<u32>().unwrap();
-            //         let zone_id = order[2].parse::<u8>().unwrap();
-            //         let purchase = EcommercePurchase {
-            //             product_id,
-            //             quantity
-            //             zone_id,
-            //         };,
-
-            //         let purchase_clone = purchase.clone();
-            //         let shop_addr_clone = self.shop_addr.clone();
-            //         let write_clone = self.write.clone();
-            //         println!("HOLA antes del wrap");
-            //         wrap_future::<_, Self>(async move {
-            //             println!("HOLA por mandar el mensaje");
-            //             let purchase_state = shop_addr_clone.send(purchase).await.unwrap();
-            //             if purchase_state.is_err() {
-            //                 let arc = write_clone.clone();
-            //                 println!(
-            //                     "PEDIDO NO ENTREGADO: {}, {}, {}",
-            //                     purchase_clone.product_id,
-            //                     purchase_clone.quantity,
-            //                     purchase_clone.zone_id
-            //                 );
-            //                 arc.lock()
-            //                     .await
-            //                     .write_all(
-            //                         format!(
-            //                             "{},{},{},REJECTED",
-            //                             purchase_clone.product_id,
-            //                             purchase_clone.quantity,
-            //                             purchase_clone.zone_id
-            //                         )
-            //                         .as_bytes(),
-            //                     )
-            //                     .await
-            //                     .expect("Should have sent");
-            //             }
-            //         })
-            //         .spawn(ctx);
-            //     }
-            // } else {
-            //     println!("[{:?}] Failed to read line {:?}", self.addr, read);
-            // }
+            shop_addr_clone.try_send(purchase_clone).unwrap();
         }
     }
 
@@ -110,6 +57,7 @@ impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
         ctx.stop();
     }
 }
+
 async fn initiate_shop_side_server(shop: actix::Addr<Shop>) {
     let listener: TcpListener = TcpListener::bind("127.0.0.1:2346").await.unwrap();
     while let Ok((stream, addr)) = listener.accept().await {
@@ -181,7 +129,7 @@ fn main() {
             let _ = shop.send(order).await.unwrap();
         }
 
-        shop.send(Print).await;
+        let _ = shop.send(Print).await;
         handle.join().unwrap().await;
 
         println!("MAIN TERMINADO");

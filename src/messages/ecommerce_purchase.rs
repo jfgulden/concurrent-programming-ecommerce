@@ -1,47 +1,64 @@
-use crate::error::PurchaseError;
-use actix::Message;
+use std::{sync::Arc, thread, time::Duration};
+
+use crate::{
+    ecom_actor::Ecom, error::PurchaseError, messages::deliver_purchase::DeliverPurchase,
+    shop_actor::Shop,
+};
+use actix::{
+    ActorFutureExt, AsyncContext, Context, Handler, Message, ResponseActFuture, WrapFuture,
+};
+use rand::{thread_rng, Rng};
+use tokio::{io::WriteHalf, net::TcpStream, sync::Mutex, time::sleep};
 
 // Message
 #[derive(Debug, Message, Clone)]
-#[rtype(result = "Result<(), PurchaseError>")]
-//#[rtype(result = "bool")]
+#[rtype(result = "()")]
 
 pub struct EcommercePurchase {
+    pub id: u8,
     pub product_id: String,
     pub quantity: u32,
     pub zone_id: u8,
+    pub write: Arc<Mutex<WriteHalf<TcpStream>>>,
 }
 
 impl EcommercePurchase {
-    // pub fn serialize(&self) -> Vec<u8> {
-    //     let mut buffer: Vec<u8> = Vec::new();
-    //     let mut product = self.product_id.as_bytes().to_vec();
-    //     while product.len() < 16 {
-    //         product.push(0);
-    //     }
-    //     buffer.extend_from_slice(product.as_slice());
-    //     buffer.extend_from_slice(&self.quantity.to_be_bytes());
-    //     buffer.extend_from_slice(&self.zone_id.to_be_bytes());
-    //     buffer
-    // }
-
-    // pub fn parse(buffer: Vec<u8>) -> Self {
-    //     let mut product_id: Vec<u8> = Vec::new();
-    //     product_id.extend_from_slice(&buffer[0..16]);
-    //     let product_id = String::from_utf8(product_id).unwrap();
-    //     let quantity = u32::from_be_bytes(buffer[16..20].try_into().unwrap());
-    //     let zone_id = u8::from_be_bytes(buffer[20..21].try_into().unwrap());
-    //     Self {
-    //         product_id,
-    //         quantity,
-    //         zone_id,
-    //     }
-    // }
-
     pub fn print_cancelled(&self) {
         println!(
             "[ECOMM]  Rechazado {:>2} x {}, no hay stock",
             self.quantity, self.product_id
         );
+    }
+}
+
+impl Handler<EcommercePurchase> for Shop {
+    type Result = ();
+
+    fn handle(&mut self, msg: EcommercePurchase, ctx: &mut Context<Self>) -> Self::Result {
+        thread::sleep(Duration::from_millis(100));
+        let product = self
+            .stock
+            .iter_mut()
+            .find(|p| p.id == msg.product_id)
+            .unwrap();
+
+        if product.stock < msg.quantity {
+            msg.print_cancelled();
+            // mandar mensaje de que no hay stock
+            return;
+        }
+
+        if product.stock > msg.quantity {
+            product.stock -= msg.quantity;
+        }
+        product.reserved += msg.quantity;
+        println!(
+            "[ECOMM]  Reserva   {:>2} x {}",
+            msg.quantity, msg.product_id
+        );
+
+        ctx.address()
+            .try_send(DeliverPurchase { purchase: msg })
+            .unwrap();
     }
 }

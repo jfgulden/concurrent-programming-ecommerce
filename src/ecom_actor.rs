@@ -1,28 +1,33 @@
-use crate::error::{FileError, PurchaseError};
-use crate::messages::ecommerce_purchase::EcommercePurchase;
+use crate::error::FileError;
 use crate::messages::print::Print;
-use crate::messages::process_order::ProcessOrders;
-use actix::{Actor, Context, Handler};
+use actix::fut::wrap_future;
+use actix::{Actor, ActorFutureExt, AsyncContext, Context, Handler, StreamHandler};
+use actix_rt::System;
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::TcpStream;
-use std::thread;
-use std::time::Duration;
+use std::io::{BufRead, BufReader, Read};
+use std::sync::Arc;
+use std::vec;
+use tokio::io::{split, AsyncBufReadExt, WriteHalf};
+use tokio::net::TcpStream;
+use tokio::sync::Mutex;
+use tokio_stream::wrappers;
 
 #[derive(Debug)]
-pub struct Product {
-    pub id: String,
-    pub stock: u32,
-    pub reserved: u32,
+pub struct EcomOrder {
+    pub id: u8,
+    pub product_id: String,
+    pub quantity: u32,
+    pub zone_id: u8,
+    pub shops_requested: Vec<u8>,
 }
 
 #[derive(Debug)]
 pub struct Ecom {
     pub name: String,
     pub address: String,
-    pub orders: Vec<EcommercePurchase>,
-    streams: HashMap<u8, TcpStream>, //Esto debería ser un HashMap<(lat, long) o zone_id, TcpStream>
+    pub orders: Vec<EcomOrder>,
+    pub streams: HashMap<u8, Arc<Mutex<WriteHalf<TcpStream>>>>, //Esto debería ser un HashMap<(lat, long) o zone_id, TcpStream>
 }
 
 impl Ecom {
@@ -55,10 +60,10 @@ impl Ecom {
                 return Err(FileError::WrongFormat);
             }
 
-            let stream = TcpStream::connect(shop_info[1]).unwrap();
+            let stream = std::net::TcpStream::connect(shop_info[1]).unwrap();
             let location: u8 = shop_info[2].parse().unwrap();
             println!("{}", location);
-            streams.insert(location, stream);
+            streams.insert(location, TcpStream::from_std(stream).unwrap());
         }
         Ok(streams)
     }
@@ -77,17 +82,16 @@ impl Ecom {
             return Err(FileError::WrongFormat);
         }
 
-        let streams = Ecom::fetch_shop_streams()?;
-
         let mut ecom = Self {
             name: ecom_info[0].to_string(),
             address: ecom_info[1].to_string(),
             orders: Vec::new(),
-            streams,
+            streams: HashMap::new(),
         };
 
         // ignore dash line
         lines.next();
+        let mut line_number = 0;
         for line in lines {
             let current_line = line.map_err(|_| FileError::WrongFormat)?;
 
@@ -97,7 +101,8 @@ impl Ecom {
             if product_data.len() != 3 {
                 return Err(FileError::WrongFormat);
             }
-            let ecom_order = EcommercePurchase {
+            let ecom_order = EcomOrder {
+                id: line_number,
                 product_id: product_data[0].to_string(),
                 quantity: product_data[1]
                     .parse()
@@ -105,9 +110,11 @@ impl Ecom {
                 zone_id: product_data[2]
                     .parse()
                     .map_err(|_| FileError::WrongFormat)?,
+                shops_requested: vec![],
             };
 
             ecom.orders.push(ecom_order);
+            line_number += 1;
         }
 
         Ok(ecom)
@@ -116,61 +123,48 @@ impl Ecom {
 
 impl Actor for Ecom {
     type Context = Context<Self>;
-}
 
-impl Handler<ProcessOrders> for Ecom {
-    type Result = Result<(), PurchaseError>;
+    fn started(&mut self, ctx: &mut Context<Self>) {
+        let streams = Self::fetch_shop_streams().unwrap();
 
-    fn handle(&mut self, _msg: ProcessOrders, _ctx: &mut Self::Context) -> Self::Result {
-        for (_index, order) in self.orders.iter().enumerate() {
-            //lógica para saber a donde mandar (que zona)
-            //estaría bueno que el hashmap guarde lat y long y cada pedido tenga su lat y long.
-            //de esa forma compararíamos las distancias y mandaríamos el pedido a la tienda más cercana
-            let mut shop_stream = self.streams.get(&order.zone_id).unwrap();
-            // let message = if index == self.orders.len() - 1 {
-            //     format!("{},{},{}", order.product_id, order.quantity, order.zone_id)
-            // } else {
-            //     format!("{},{},{}/", order.product_id, order.quantity, order.zone_id)
-            // };
-            let message = format!(
-                "{},{},{}\n",
-                order.product_id, order.quantity, order.zone_id
+        for (id, stream) in streams {
+            let (read, write_half) = split(stream);
+            Ecom::add_stream(
+                wrappers::LinesStream::new(tokio::io::BufReader::new(read).lines()),
+                ctx,
             );
-            let _bytes = shop_stream.write_all(message.as_bytes()).unwrap();
-            thread::sleep(Duration::from_millis(100));
+            self.streams.insert(id, Arc::new(Mutex::new(write_half)));
         }
-        Ok(())
+
+        println!("Actor is alive");
     }
 }
 
-impl Handler<EcommercePurchase> for Ecom {
-    type Result = Result<(), PurchaseError>; //ResponseActFuture<Self,
+impl StreamHandler<Result<String, std::io::Error>> for Ecom {
+    fn handle(&mut self, read: Result<String, std::io::Error>, ctx: &mut Self::Context) {
+        if let Ok(line) = read {
+            let order_str = line.split(',').collect::<Vec<&str>>();
+            let id = order_str[0].parse::<u8>().unwrap();
+            let result = order_str[1].parse::<u8>().unwrap();
+            let message = order_str[2].to_string();
 
-    fn handle(&mut self, _msg: EcommercePurchase, _ctx: &mut Context<Self>) -> Self::Result {
-        // thread::sleep(Duration::from_millis(thread_rng().gen_range(500..1500)));
+            let order = self.orders.iter().find(|o| o.id == id).unwrap();
+            println!(
+                "[{:?}] {} ({})   {:<2}x{}",
+                order.shops_requested.last(),
+                message,
+                result,
+                order.quantity,
+                order.product_id
+            );
 
-        let _algo = self
-            .orders
-            .iter()
-            .map(|order| {
-                println!(
-                    "[ECOMM]  Solicitamos stock:   {:>2} x {} a zona: {}",
-                    order.quantity, order.product_id, order.zone_id
-                );
-                println!(
-                    "[ECOMM]   Se entregaron:     {:>2} x {} desde zona: {}",
-                    order.quantity, order.product_id, order.zone_id
-                );
-            })
-            .collect::<Vec<_>>();
-        Ok(())
+            // LOGICA SI FALLADO
+
+            // shop_addr_clone.try_send(purchase_clone).unwrap();
+        }
     }
-}
 
-impl Handler<Print> for Ecom {
-    type Result = ();
-
-    fn handle(&mut self, _msg: Print, _ctx: &mut Context<Self>) -> Self::Result {
-        println!("{:?}", self);
+    fn finished(&mut self, _ctx: &mut Self::Context) {
+        println!("[ECOMM] Desconectado");
     }
 }

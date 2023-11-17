@@ -1,17 +1,10 @@
-use crate::error::{FileError, PurchaseError};
-use crate::messages::ecommerce_purchase::EcommercePurchase;
-use crate::messages::local_purchase::*;
+use crate::error::FileError;
+
 use crate::messages::print::Print;
-use actix::fut::wrap_future;
-use actix::{
-    Actor, ActorFutureExt, AsyncContext, Context, Handler, Message, ResponseActFuture, WrapFuture,
-};
-use actix_rt::time::sleep;
-use rand::{thread_rng, Rng};
+use actix::{Actor, Context, Handler};
+
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
-use std::thread;
-use std::time::Duration;
 
 #[derive(Debug)]
 pub struct Product {
@@ -96,119 +89,6 @@ impl Shop {
 
 impl Actor for Shop {
     type Context = Context<Self>;
-}
-
-impl Handler<LocalPurchase> for Shop {
-    type Result = Result<(), PurchaseError>;
-
-    fn handle(&mut self, msg: LocalPurchase, _ctx: &mut Context<Self>) -> Self::Result {
-        // thread::sleep(Duration::from_millis(thread_rng().gen_range(500..1500)));
-
-        let product = match self.stock.iter_mut().find(|p| p.id == msg.product_id) {
-            Some(product) => product,
-            None => {
-                msg.print_cancelled();
-                return Err(PurchaseError::OutOfStock);
-            }
-        };
-
-        if product.stock < msg.quantity {
-            msg.print_cancelled();
-            return Err(PurchaseError::OutOfStock);
-        }
-
-        product.stock -= msg.quantity;
-
-        println!(
-            "[LOCAL]  Vendido   {:>2} x {}, quedan {}",
-            msg.quantity, msg.product_id, product.stock
-        );
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, Message, Clone)]
-#[rtype(result = "Result<(), PurchaseError>")]
-struct DeliverPurchase {
-    pub purchase: EcommercePurchase,
-    pub delivery_time: u64,
-}
-
-impl Handler<DeliverPurchase> for Shop {
-    type Result = ResponseActFuture<Self, Result<(), PurchaseError>>;
-    fn handle(&mut self, msg: DeliverPurchase, _ctx: &mut Context<Self>) -> Self::Result {
-        Box::pin(
-            sleep(Duration::from_millis(msg.delivery_time))
-                .into_actor(self)
-                .map(move |_result, _me, _ctx| {
-                    println!(
-                        "[ECOMM]  Entregado {:>2} x {}",
-                        msg.purchase.quantity, msg.purchase.product_id
-                    );
-                    Ok(())
-                }),
-        )
-    }
-}
-impl Handler<EcommercePurchase> for Shop {
-    type Result = Result<(), PurchaseError>;
-    // type Result = ResponseActFuture<Self, Result<(), PurchaseError>>;
-
-    fn handle(
-        &mut self,
-        msg: (EcommercePurchase, write_side),
-        ctx: &mut Context<Self>,
-    ) -> Self::Result {
-        thread::sleep(Duration::from_millis(100));
-        let product = self
-            .stock
-            .iter_mut()
-            .find(|p| p.id == msg.product_id)
-            .unwrap();
-
-        if product.stock < msg.quantity {
-            msg.print_cancelled();
-            return Box::pin(Err(PurchaseError::OutOfStock).into_actor(self));
-            //REVISAR ESTO
-        }
-
-        if product.stock > msg.quantity {
-            product.stock -= msg.quantity;
-        }
-        product.reserved += msg.quantity;
-        println!(
-            "[ECOMM]  Reserva   {:>2} x {}",
-            msg.quantity, msg.product_id
-        );
-
-        Box::pin(sleep(Duration::from_millis(1000)).into_actor(self).map(
-            move |_result, _me, _ctx| {
-                println!(
-                    "[ECOMM]  Entregado {:>2} x {}",
-                    msg.quantity, msg.product_id
-                );
-            },
-        ));
-        // let millis = thread_rng().gen_range(500..=1000);
-
-        // ctx.address()
-        //     .try_send(DeliverPurchase {
-        //         purchase: msg.clone(),
-        //         delivery_time: millis,
-        //     })
-        //     .map_err(|_| PurchaseError::OutOfStock)?;
-
-        // if millis > 800 {
-        //     //REVISAR
-        //     println!(
-        //         "[ECOMM]  No entregado {:>2} x {}",
-        //         msg.quantity, msg.product_id
-        //     );
-        //     return Err(PurchaseError::OutOfStock);
-        // }
-        Ok(())
-    }
 }
 
 impl Handler<Print> for Shop {
