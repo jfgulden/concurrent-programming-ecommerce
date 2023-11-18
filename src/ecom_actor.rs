@@ -1,9 +1,6 @@
 use crate::error::FileError;
-use crate::messages::print::Print;
-use actix::fut::wrap_future;
-use actix::{Actor, ActorFutureExt, AsyncContext, Context, Handler, StreamHandler};
-use actix_rt::System;
-use std::collections::HashMap;
+use crate::messages::process_orders::ForwardOrder;
+use actix::{Actor, AsyncContext, Context, StreamHandler};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read};
 use std::sync::Arc;
@@ -13,7 +10,14 @@ use tokio::net::TcpStream;
 use tokio::sync::Mutex;
 use tokio_stream::wrappers;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+
+pub struct Zone {
+    pub id: u8,
+    pub stream: Option<Arc<Mutex<WriteHalf<TcpStream>>>>,
+}
+
+#[derive(Debug, Clone)]
 pub struct EcomOrder {
     pub id: u8,
     pub product_id: String,
@@ -26,8 +30,8 @@ pub struct EcomOrder {
 pub struct Ecom {
     pub name: String,
     pub address: String,
-    pub orders: Vec<EcomOrder>,
-    pub streams: HashMap<u8, Arc<Mutex<WriteHalf<TcpStream>>>>, //Esto debería ser un HashMap<(lat, long) o zone_id, TcpStream>
+    pub pending_orders: Vec<EcomOrder>,
+    pub zones: Vec<Zone>, //Esto debería ser un HashMap<(lat, long) o zone_id, TcpStream>
 }
 
 impl Ecom {
@@ -41,8 +45,8 @@ impl Ecom {
         Ok(ecom)
     }
 
-    fn fetch_shop_streams() -> Result<HashMap<u8, TcpStream>, FileError> {
-        let mut streams: HashMap<u8, TcpStream> = HashMap::new();
+    fn fetch_shop_streams() -> Result<Vec<(u8, TcpStream)>, FileError> {
+        let mut streams: Vec<(u8, TcpStream)> = Vec::new();
         let location_files = fs::read_dir("tiendas").unwrap();
 
         for dir_entry in location_files {
@@ -63,7 +67,7 @@ impl Ecom {
             let stream = std::net::TcpStream::connect(shop_info[1]).unwrap();
             let location: u8 = shop_info[2].parse().unwrap();
             println!("{}", location);
-            streams.insert(location, TcpStream::from_std(stream).unwrap());
+            streams.push((location, TcpStream::from_std(stream).unwrap()));
         }
         Ok(streams)
     }
@@ -85,8 +89,8 @@ impl Ecom {
         let mut ecom = Self {
             name: ecom_info[0].to_string(),
             address: ecom_info[1].to_string(),
-            orders: Vec::new(),
-            streams: HashMap::new(),
+            pending_orders: Vec::new(),
+            zones: Vec::new(),
         };
 
         // ignore dash line
@@ -113,11 +117,42 @@ impl Ecom {
                 shops_requested: vec![],
             };
 
-            ecom.orders.push(ecom_order);
+            ecom.pending_orders.push(ecom_order);
             line_number += 1;
         }
 
         Ok(ecom)
+    }
+
+    pub fn get_zone_to_send(&self, order: &EcomOrder) -> Option<Zone> {
+        let mut zone_to_send: Option<Zone> = None;
+        for zone in self.zones.iter() {
+            match zone_to_send {
+                None => {
+                    if !order.shops_requested.contains(&zone.id) {
+                        zone_to_send = Some(zone.clone());
+                    }
+                }
+                Some(ref z) => {
+                    if !order.shops_requested.contains(&zone.id)
+                        && ((z.id - order.zone_id) as i32).abs()
+                            > ((zone.id - order.zone_id) as i32).abs()
+                    {
+                        zone_to_send = Some(zone.clone());
+                    }
+                }
+            }
+        }
+        zone_to_send
+    }
+    pub fn clear_requested_shops(&mut self, order_id: u8) {
+        let order = self
+            .pending_orders
+            .iter_mut()
+            .find(|order| order.id == order_id)
+            .unwrap();
+
+        order.shops_requested.clear();
     }
 }
 
@@ -125,22 +160,28 @@ impl Actor for Ecom {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Context<Self>) {
-        let streams = Self::fetch_shop_streams().unwrap();
+        println!("INICIANDO ECOMMERCE");
 
-        for (id, stream) in streams {
+        let streams = Self::fetch_shop_streams().unwrap();
+        for (index, (id, stream)) in streams.into_iter().enumerate() {
             let (read, write_half) = split(stream);
             Ecom::add_stream(
                 wrappers::LinesStream::new(tokio::io::BufReader::new(read).lines()),
                 ctx,
             );
-            self.streams.insert(id, Arc::new(Mutex::new(write_half)));
-        }
 
-        println!("Actor is alive");
+            self.zones.insert(
+                index,
+                Zone {
+                    id: id.clone(),
+                    stream: Some(Arc::new(Mutex::new(write_half))),
+                },
+            );
+        }
     }
 }
 
-impl StreamHandler<Result<String, std::io::Error>> for Ecom {
+impl<'a> StreamHandler<Result<String, std::io::Error>> for Ecom {
     fn handle(&mut self, read: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(line) = read {
             let order_str = line.split(',').collect::<Vec<&str>>();
@@ -148,23 +189,24 @@ impl StreamHandler<Result<String, std::io::Error>> for Ecom {
             let result = order_str[1].parse::<u8>().unwrap();
             let message = order_str[2].to_string();
 
-            let order = self.orders.iter().find(|o| o.id == id).unwrap();
+            let order = self.pending_orders.iter().find(|o| o.id == id).unwrap();
             println!(
-                "[{:?}] {} ({})   {:<2}x{}",
-                order.shops_requested.last(),
+                "[ECOM] Pedido {} desde tienda [{:?}]: {:<2}x {}",
                 message,
-                result,
+                order.shops_requested.last().unwrap(),
                 order.quantity,
                 order.product_id
             );
 
-            // LOGICA SI FALLADO
-
-            // shop_addr_clone.try_send(purchase_clone).unwrap();
+            match result {
+                0 => ctx.address().try_send(ForwardOrder(order.clone())).unwrap(),
+                1 => self.pending_orders.retain(|order| order.id != id),
+                _ => (),
+            }
         }
     }
 
     fn finished(&mut self, _ctx: &mut Self::Context) {
-        println!("[ECOMM] Desconectado");
+        println!("[ECOM] Desconectado");
     }
 }

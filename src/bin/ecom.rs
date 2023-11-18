@@ -1,8 +1,7 @@
 use actix::{Actor, Addr, System};
 use concurrentes::ecom_actor::Ecom;
-use concurrentes::messages::process_order::ProcessOrders;
-use rand::{thread_rng, Rng};
-use std::{env, path::Path, thread, time::Duration};
+use concurrentes::messages::process_orders::ProcessOrders;
+use std::{env, path::Path};
 
 const CANT_ARGS: usize = 2;
 

@@ -1,14 +1,8 @@
 use std::{sync::Arc, thread, time::Duration};
 
-use crate::{
-    ecom_actor::Ecom, error::PurchaseError, messages::deliver_purchase::DeliverPurchase,
-    shop_actor::Shop,
-};
-use actix::{
-    ActorFutureExt, AsyncContext, Context, Handler, Message, ResponseActFuture, WrapFuture,
-};
-use rand::{thread_rng, Rng};
-use tokio::{io::WriteHalf, net::TcpStream, sync::Mutex, time::sleep};
+use crate::{messages::deliver_purchase::DeliverPurchase, shop_actor::Shop};
+use actix::{AsyncContext, Context, Handler, Message};
+use tokio::{io::WriteHalf, net::TcpStream, sync::Mutex};
 
 // Message
 #[derive(Debug, Message, Clone)]
@@ -52,10 +46,7 @@ impl Handler<EcommercePurchase> for Shop {
             product.stock -= msg.quantity;
         }
         product.reserved += msg.quantity;
-        println!(
-            "[ECOMM]  Reserva   {:>2} x {}",
-            msg.quantity, msg.product_id
-        );
+        println!("[ECOM]  Reserva   {:>2} x {}", msg.quantity, msg.product_id);
 
         ctx.address()
             .try_send(DeliverPurchase { purchase: msg })

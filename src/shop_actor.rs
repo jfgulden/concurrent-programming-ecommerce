@@ -89,8 +89,11 @@ impl Shop {
 
 impl Actor for Shop {
     type Context = Context<Self>;
-}
 
+    fn started(&mut self, _ctx: &mut Context<Self>) {
+        println!("INICIANDO TIENDA [{:?}]", self.location);
+    }
+}
 impl Handler<Print> for Shop {
     type Result = ();
 

@@ -28,9 +28,9 @@ impl Actor for ShopSideServer {
 }
 
 impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
-    fn handle(&mut self, read: Result<String, std::io::Error>, ctx: &mut Self::Context) {
+    fn handle(&mut self, read: Result<String, std::io::Error>, _ctx: &mut Self::Context) {
         if let Ok(line) = read {
-            println!("[{:?}] Recibido: {:?}", self.addr, line);
+            println!("[ECOM] Pedido recibido desde [{:?}]: {:?}", self.addr, line);
 
             let order = line.split(',').collect::<Vec<&str>>();
             let id = order[0].parse::<u8>().unwrap();
@@ -53,7 +53,7 @@ impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
     }
 
     fn finished(&mut self, ctx: &mut Self::Context) {
-        println!("[{:?}] Desconectado", self.addr);
+        println!("[ECOM] [{:?}] Desconectado", self.addr);
         ctx.stop();
     }
 }
@@ -61,7 +61,7 @@ impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
 async fn initiate_shop_side_server(shop: actix::Addr<Shop>) {
     let listener: TcpListener = TcpListener::bind("127.0.0.1:2346").await.unwrap();
     while let Ok((stream, addr)) = listener.accept().await {
-        println!("Se conectó el Ecommerce {:?}", addr);
+        println!("[ECOM] Se conectó el Ecommerce {:?}", addr);
         ShopSideServer::create(|ctx| {
             //Wrapper para que un actor pueda trabajar sobre un stream
             //Al actor le llega cada elemento del stream como si fuera un mensaje
