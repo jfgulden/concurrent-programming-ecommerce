@@ -3,7 +3,10 @@ use std::{
     io::{BufRead, BufReader, Read},
 };
 
-use crate::{error::FileError, messages::local_purchase::LocalPurchase};
+use crate::{
+    error::FileError,
+    messages::local_purchase::{LocalPurchase, LocalPurchaseState},
+};
 
 pub struct Orders {
     pub list: Vec<LocalPurchase>,
@@ -29,8 +32,9 @@ impl Orders {
             }
 
             let order = LocalPurchase {
-                product_id: line_slices[0].to_string(),
+                product: line_slices[0].to_string(),
                 quantity: line_slices[1].parse().map_err(|_| FileError::WrongFormat)?,
+                status: LocalPurchaseState::PROCESSING,
             };
 
             orders.list.push(order);

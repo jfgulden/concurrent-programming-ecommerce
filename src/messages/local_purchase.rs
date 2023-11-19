@@ -1,20 +1,37 @@
 use crate::{error::PurchaseError, shop_actor::Shop};
 use actix::{Context, Handler, Message};
 
-// Message
+//LocalPurchase solo va a tener 3 estados: PROCESSING, SOLD o REJECTED.
+#[derive(Debug, Clone)]
+pub enum LocalPurchaseState {
+    PROCESSING,
+    SOLD,
+    REJECTED,
+}
+impl LocalPurchaseState {
+    pub fn to_string(&self) -> String {
+        match self {
+            LocalPurchaseState::PROCESSING => "PROCESANDO".to_string(),
+            LocalPurchaseState::SOLD => "VENDIDO".to_string(),
+            LocalPurchaseState::REJECTED => "RECHAZADO".to_string(),
+        }
+    }
+}
 #[derive(Debug, Message)]
 #[rtype(result = "Result<(), PurchaseError>")]
-
 pub struct LocalPurchase {
-    pub product_id: String,
+    pub product: String,
     pub quantity: u32,
+    pub status: LocalPurchaseState,
 }
 
 impl LocalPurchase {
-    pub fn print_cancelled(&self) {
+    pub fn print_status(&self) {
         println!(
-            "[LOCAL]  Rechazado {:>2} x {}, no hay stock",
-            self.quantity, self.product_id
+            "[LOCAL]  {} {:>2} x {}",
+            self.status.to_string(),
+            self.quantity,
+            self.product
         );
     }
 }
@@ -22,28 +39,23 @@ impl LocalPurchase {
 impl Handler<LocalPurchase> for Shop {
     type Result = Result<(), PurchaseError>;
 
-    fn handle(&mut self, msg: LocalPurchase, _ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, mut msg: LocalPurchase, _ctx: &mut Context<Self>) -> Self::Result {
         // thread::sleep(Duration::from_millis(thread_rng().gen_range(500..1500)));
 
-        let product = match self.stock.iter_mut().find(|p| p.id == msg.product_id) {
-            Some(product) => product,
+        match self.stock.iter_mut().find(|p| p.id == msg.product) {
+            Some(product) => {
+                if product.stock < msg.quantity {
+                    msg.status = LocalPurchaseState::REJECTED;
+                } else {
+                    msg.status = LocalPurchaseState::SOLD;
+                    product.stock -= msg.quantity;
+                }
+            }
             None => {
-                msg.print_cancelled();
-                return Err(PurchaseError::OutOfStock);
+                msg.status = LocalPurchaseState::REJECTED;
             }
         };
-
-        if product.stock < msg.quantity {
-            msg.print_cancelled();
-            return Err(PurchaseError::OutOfStock);
-        }
-
-        product.stock -= msg.quantity;
-
-        println!(
-            "[LOCAL]  Vendido   {:>2} x {}, quedan {}",
-            msg.quantity, msg.product_id, product.stock
-        );
+        msg.print_status();
 
         Ok(())
     }

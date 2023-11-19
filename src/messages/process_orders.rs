@@ -3,7 +3,6 @@ use std::{thread, time::Duration};
 use crate::{
     ecom_actor::{Ecom, EcomOrder},
     error::PurchaseError,
-    orders,
 };
 use actix::{dev::ContextFutureSpawner, fut::wrap_future, AsyncContext, Handler, Message};
 use tokio::io::AsyncWriteExt;
@@ -32,10 +31,7 @@ impl Handler<ForwardOrder> for Ecom {
     type Result = Result<(), PurchaseError>;
 
     fn handle(&mut self, msg: ForwardOrder, ctx: &mut Self::Context) -> Self::Result {
-        //lógica para saber a donde mandar (que zona)
-        //estaría bueno que el hashmap guarde lat y long y cada pedido tenga su lat y long.
-        //de esa forma compararíamos las distancias y mandaríamos el pedido a la tienda más cercana
-        let mut zone_to_send = self.get_zone_to_send(&msg.0);
+        let mut zone_to_send = self.find_delivery_zone(&msg.0);
         if zone_to_send.is_none() {
             //Si no hay tiendas disponibles, esperamos 4 segundos y volvemos a intentar
             wrap_future::<_, Self>(async move {
@@ -43,7 +39,7 @@ impl Handler<ForwardOrder> for Ecom {
             })
             .spawn(ctx);
             self.clear_requested_shops(msg.0.id);
-            zone_to_send = self.get_zone_to_send(
+            zone_to_send = self.find_delivery_zone(
                 self.pending_orders
                     .iter()
                     .find(|order| order.id == msg.0.id)

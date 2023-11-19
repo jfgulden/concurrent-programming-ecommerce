@@ -18,3 +18,4 @@ coca,3,1
 galleta,5,1
 huevo,2,1
 pelota,5,1
+pelota,5000,1

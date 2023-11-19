@@ -1,6 +1,5 @@
 use actix_rt::System;
-use concurrentes::messages::ecommerce_purchase::EcommercePurchase;
-use concurrentes::messages::print::Print;
+use concurrentes::messages::ecom_purchase::EcomPurchase;
 use concurrentes::{orders::Orders, shop_actor::Shop};
 use rand::{thread_rng, Rng};
 use std::net::SocketAddr;
@@ -33,22 +32,8 @@ impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
             println!("[ECOM] Pedido recibido desde [{:?}]: {:?}", self.addr, line);
 
             let order = line.split(',').collect::<Vec<&str>>();
-            let id = order[0].parse::<u8>().unwrap();
-            let product_id = order[1].to_string();
-            let quantity = order[2].parse::<u32>().unwrap();
-            let zone_id = order[3].parse::<u8>().unwrap();
-            let purchase = EcommercePurchase {
-                id,
-                product_id,
-                quantity,
-                zone_id,
-                write: self.write.clone(),
-            };
-
-            let purchase_clone = purchase.clone();
-            let shop_addr_clone = self.shop_addr.clone();
-
-            shop_addr_clone.try_send(purchase_clone).unwrap();
+            let purchase = EcomPurchase::parse(order, self.write.clone());
+            self.shop_addr.try_send(purchase).unwrap();
         }
     }
 
@@ -63,9 +48,6 @@ async fn initiate_shop_side_server(shop: actix::Addr<Shop>) {
     while let Ok((stream, addr)) = listener.accept().await {
         println!("[ECOM] Se conectó el Ecommerce {:?}", addr);
         ShopSideServer::create(|ctx| {
-            //Wrapper para que un actor pueda trabajar sobre un stream
-            //Al actor le llega cada elemento del stream como si fuera un mensaje
-            //LinesStream: Stream de líneas
             let (read, write_half) = split(stream);
             ShopSideServer::add_stream(
                 wrappers::LinesStream::new(BufReader::new(read).lines()),
@@ -101,14 +83,15 @@ fn main() {
             return;
         }
 
-        let shop: actix::Addr<Shop> = match Shop::from_file(args[1].as_str()) {
+        let shop: Shop = match Shop::from_file(args[1].as_str()) {
             Ok(shop) => shop,
             Err(error) => {
                 println!("ERROR shop: {:?}", error);
                 return;
             }
-        }
-        .start();
+        };
+
+        println!("{:?}", shop);
 
         let orders = match Orders::from_file(args[2].as_str()) {
             Ok(orders) => orders,
@@ -117,19 +100,16 @@ fn main() {
                 return;
             }
         };
-        let shop_clone = shop.clone();
+        let shop_actor = shop.start();
+        let shop_clone: actix::Addr<Shop> = shop_actor.clone();
 
-        // let shop_recipient = shop.clone();
         let handle = thread::spawn(move || initiate_shop_side_server(shop_clone));
 
-        let mut a = thread_rng();
         for order in orders.list {
-            let random = a.gen_range(100..=300);
+            let random = thread_rng().gen_range(100..=300);
             thread::sleep(Duration::from_millis(random));
-            let _ = shop.send(order).await.unwrap();
+            let _ = shop_actor.send(order).await.unwrap();
         }
-
-        let _ = shop.send(Print).await;
         handle.join().unwrap().await;
 
         println!("MAIN TERMINADO");

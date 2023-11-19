@@ -1,7 +1,5 @@
 use crate::error::FileError;
-
-use crate::messages::print::Print;
-use actix::{Actor, Context, Handler};
+use actix::{Actor, Context};
 
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
@@ -92,12 +90,5 @@ impl Actor for Shop {
 
     fn started(&mut self, _ctx: &mut Context<Self>) {
         println!("INICIANDO TIENDA [{:?}]", self.location);
-    }
-}
-impl Handler<Print> for Shop {
-    type Result = ();
-
-    fn handle(&mut self, _msg: Print, _ctx: &mut Context<Self>) -> Self::Result {
-        println!("{:?}", self);
     }
 }

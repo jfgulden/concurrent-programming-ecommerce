@@ -1,4 +1,4 @@
-use actix::{Actor, Addr, System};
+use actix::{Actor, System};
 use concurrentes::ecom_actor::Ecom;
 use concurrentes::messages::process_orders::ProcessOrders;
 use std::{env, path::Path};
@@ -20,17 +20,16 @@ fn main() {
             return;
         }
 
-        let ecom: Addr<Ecom> = match Ecom::from_file(args[1].as_str()) {
+        let ecom: Ecom = match Ecom::from_file(args[1].as_str()) {
             Ok(ecom) => ecom,
             Err(error) => {
                 println!("ERROR ecom: {:?}", error);
                 return;
             }
-        }
-        .start();
-
-        // thread::sleep(Duration::from_millis(3000));
-        ecom.try_send(ProcessOrders()).unwrap();
+        };
+        println!("ECOM: {:?}", ecom);
+        let ecom_actor = ecom.start();
+        ecom_actor.try_send(ProcessOrders()).unwrap();
 
         println!("MAIN TERMINADO");
     });

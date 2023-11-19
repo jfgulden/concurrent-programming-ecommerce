@@ -1,4 +1,5 @@
 use crate::error::FileError;
+use crate::messages::ecom_purchase::EcomPurchaseState;
 use crate::messages::process_orders::ForwardOrder;
 use actix::{Actor, AsyncContext, Context, StreamHandler};
 use std::fs::{self, File};
@@ -124,7 +125,7 @@ impl Ecom {
         Ok(ecom)
     }
 
-    pub fn get_zone_to_send(&self, order: &EcomOrder) -> Option<Zone> {
+    pub fn find_delivery_zone(&self, order: &EcomOrder) -> Option<Zone> {
         let mut zone_to_send: Option<Zone> = None;
         for zone in self.zones.iter() {
             match zone_to_send {
@@ -186,21 +187,25 @@ impl<'a> StreamHandler<Result<String, std::io::Error>> for Ecom {
         if let Ok(line) = read {
             let order_str = line.split(',').collect::<Vec<&str>>();
             let id = order_str[0].parse::<u8>().unwrap();
-            let result = order_str[1].parse::<u8>().unwrap();
-            let message = order_str[2].to_string();
+            let state = EcomPurchaseState::from_int(order_str[1].parse::<u8>().unwrap()).unwrap();
 
             let order = self.pending_orders.iter().find(|o| o.id == id).unwrap();
             println!(
                 "[ECOM] Pedido {} desde tienda [{:?}]: {:<2}x {}",
-                message,
+                state.to_string(),
                 order.shops_requested.last().unwrap(),
                 order.quantity,
                 order.product_id
             );
 
-            match result {
-                0 => ctx.address().try_send(ForwardOrder(order.clone())).unwrap(),
-                1 => self.pending_orders.retain(|order| order.id != id),
+            match state {
+                EcomPurchaseState::DELIVERED => self.pending_orders.retain(|order| order.id != id),
+                EcomPurchaseState::LOST => {
+                    ctx.address().try_send(ForwardOrder(order.clone())).unwrap()
+                }
+                EcomPurchaseState::REJECTED => {
+                    ctx.address().try_send(ForwardOrder(order.clone())).unwrap()
+                }
                 _ => (),
             }
         }

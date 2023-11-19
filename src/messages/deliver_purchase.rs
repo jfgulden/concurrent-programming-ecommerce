@@ -1,58 +1,37 @@
 use std::time::Duration;
 
-use actix::{
-    dev::ContextFutureSpawner, fut::wrap_future, ActorFutureExt, Context, Handler, Message,
-    ResponseActFuture, WrapFuture,
-};
+use actix::{dev::ContextFutureSpawner, fut::wrap_future, Context, Handler, Message};
 use rand::{thread_rng, Rng};
-use tokio::{io::AsyncWriteExt, time::sleep};
+use tokio::io::AsyncWriteExt;
 
-use crate::shop_actor::Shop;
+use crate::{error::PurchaseError, shop_actor::Shop};
 
-use super::ecommerce_purchase::EcommercePurchase;
+use super::ecom_purchase::{EcomPurchase, EcomPurchaseState};
 
 #[derive(Debug, Message, Clone)]
-#[rtype(result = "()")]
+#[rtype(result = "Result<(), PurchaseError>")]
 pub struct DeliverPurchase {
-    pub purchase: EcommercePurchase,
+    pub purchase: EcomPurchase,
 }
 
 impl Handler<DeliverPurchase> for Shop {
-    type Result = ResponseActFuture<Self, ()>;
-    fn handle(&mut self, msg: DeliverPurchase, _ctx: &mut Context<Self>) -> Self::Result {
+    type Result = Result<(), PurchaseError>;
+
+    fn handle(&mut self, mut msg: DeliverPurchase, ctx: &mut Context<Self>) -> Self::Result {
         let delivery_time = Duration::from_millis(thread_rng().gen_range(500..1500));
+        wrap_future::<_, Self>(async move {
+            tokio::time::sleep(delivery_time).await;
+            if msg.purchase.state != EcomPurchaseState::REJECTED {
+                msg.purchase.state.set_delivery_status();
+            }
+            msg.purchase.print_status();
 
-        let delivery = sleep(delivery_time)
-            .into_actor(self)
-            .map(move |_result, _me, ctx| {
-                let is_delivered = thread_rng().gen_bool(0.5);
+            let mut write = msg.purchase.write.lock().await;
+            let msg = format!("{},{}\n", msg.purchase.id, msg.purchase.state.to_int());
+            write.write_all(msg.as_bytes()).await.unwrap();
+        })
+        .spawn(ctx);
 
-                if is_delivered {
-                    println!(
-                        "[ECOMM]  Entregado {:>2} x {}",
-                        msg.purchase.quantity, msg.purchase.product_id
-                    );
-                    wrap_future::<_, Self>(async move {
-                        let mut write = msg.purchase.write.lock().await;
-                        let msg = format!("{},1,ENTREGADO\n", msg.purchase.id);
-                        write.write_all(msg.as_bytes()).await.unwrap();
-                    })
-                    .spawn(ctx);
-                } else {
-                    println!(
-                        "[ECOMM]  Perdido   {:>2} x {}",
-                        msg.purchase.quantity, msg.purchase.product_id
-                    );
-                    wrap_future::<_, Self>(async move {
-                        let mut write = msg.purchase.write.lock().await;
-                        let msg = format!("{},0,PERDIDO\n", msg.purchase.id);
-                        write.write_all(msg.as_bytes()).await.unwrap();
-                    })
-                    .spawn(ctx);
-                }
-                return;
-            });
-
-        Box::pin(delivery)
+        Ok(())
     }
 }
