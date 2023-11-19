@@ -46,6 +46,47 @@ impl Ecom {
         Ok(ecom)
     }
 
+    pub fn orders_from_file(path: &str) -> Result<Vec<EcomOrder>, FileError> {
+        let file = File::open(path).map_err(|_| FileError::NotFound)?;
+        let reader = BufReader::new(file);
+
+        let mut orders: Vec<EcomOrder> = Vec::new();
+        let mut lines = reader.lines();
+
+        // ignore info line
+        lines.next();
+        // ignore dash line
+        lines.next();
+
+        let mut line_number = 0;
+        for line in lines {
+            let current_line = line.map_err(|_| FileError::WrongFormat)?;
+
+            let product_data: Vec<&str> = current_line.split(',').collect();
+
+            // ['KEY', 'VALUE', 'ZONE'].len() == 3
+            if product_data.len() != 3 {
+                return Err(FileError::WrongFormat);
+            }
+            let ecom_order = EcomOrder {
+                id: line_number,
+                product_id: product_data[0].to_string(),
+                quantity: product_data[1]
+                    .parse()
+                    .map_err(|_| FileError::WrongFormat)?,
+                zone_id: product_data[2]
+                    .parse()
+                    .map_err(|_| FileError::WrongFormat)?,
+                shops_requested: vec![],
+            };
+
+            orders.push(ecom_order);
+            line_number += 1;
+        }
+
+        Ok(orders)
+    }
+
     fn fetch_shop_streams() -> Result<Vec<(u8, TcpStream)>, FileError> {
         let mut streams: Vec<(u8, TcpStream)> = Vec::new();
         let location_files = fs::read_dir("tiendas").unwrap();
@@ -94,57 +135,45 @@ impl Ecom {
             zones: Vec::new(),
         };
 
-        // ignore dash line
-        lines.next();
-        let mut line_number = 0;
-        for line in lines {
-            let current_line = line.map_err(|_| FileError::WrongFormat)?;
-
-            let product_data: Vec<&str> = current_line.split(',').collect();
-
-            // ['KEY', 'VALUE', 'ZONE'].len() == 3
-            if product_data.len() != 3 {
-                return Err(FileError::WrongFormat);
-            }
-            let ecom_order = EcomOrder {
-                id: line_number,
-                product_id: product_data[0].to_string(),
-                quantity: product_data[1]
-                    .parse()
-                    .map_err(|_| FileError::WrongFormat)?,
-                zone_id: product_data[2]
-                    .parse()
-                    .map_err(|_| FileError::WrongFormat)?,
-                shops_requested: vec![],
-            };
-
-            ecom.pending_orders.push(ecom_order);
-            line_number += 1;
-        }
-
         Ok(ecom)
     }
 
     pub fn find_delivery_zone(&self, order: &EcomOrder) -> Option<Zone> {
-        let mut zone_to_send: Option<Zone> = None;
-        for zone in self.zones.iter() {
-            match zone_to_send {
-                None => {
-                    if !order.shops_requested.contains(&zone.id) {
-                        zone_to_send = Some(zone.clone());
-                    }
-                }
-                Some(ref z) => {
-                    if !order.shops_requested.contains(&zone.id)
-                        && ((z.id - order.zone_id) as i32).abs()
-                            > ((zone.id - order.zone_id) as i32).abs()
-                    {
-                        zone_to_send = Some(zone.clone());
-                    }
-                }
+        let mut zones = self.zones.clone();
+        zones.sort_by(|a, b| {
+            if ((a.id - order.zone_id) as i32).abs() > ((b.id - order.zone_id) as i32).abs() {
+                std::cmp::Ordering::Greater
+            } else {
+                std::cmp::Ordering::Less
+            }
+        });
+
+        for zone in zones {
+            if !order.shops_requested.contains(&zone.id) {
+                return Some(zone);
             }
         }
-        zone_to_send
+        None
+
+        // let mut zone_to_send: Option<Zone> = None;
+        // for zone in self.zones.iter() {
+        //     match zone_to_send {
+        //         None => {
+        //             if !order.shops_requested.contains(&zone.id) {
+        //                 zone_to_send = Some(zone.clone());
+        //             }
+        //         }
+        //         Some(ref z) => {
+        //             if !order.shops_requested.contains(&zone.id)
+        //                 && ((z.id - order.zone_id) as i32).abs()
+        //                     > ((zone.id - order.zone_id) as i32).abs()
+        //             {
+        //                 zone_to_send = Some(zone.clone());
+        //             }
+        //         }
+        //     }
+        // }
+        // zone_to_send
     }
     pub fn clear_requested_shops(&mut self, order_id: u8) {
         let order = self

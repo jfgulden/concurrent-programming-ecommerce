@@ -1,6 +1,8 @@
 use actix::{Actor, System};
-use concurrentes::ecom_actor::Ecom;
 use concurrentes::messages::process_orders::ProcessOrders;
+use concurrentes::{ecom_actor::Ecom, messages::process_orders::ForwardOrder};
+use std::thread;
+use std::time::Duration;
 use std::{env, path::Path};
 
 const CANT_ARGS: usize = 2;
@@ -27,9 +29,16 @@ fn main() {
                 return;
             }
         };
+        let orders = Ecom::orders_from_file(args[1].as_str()).unwrap();
+        // let orders = Ecom::orders_from_file(args[1].as_str());
         println!("ECOM: {:?}", ecom);
         let ecom_actor = ecom.start();
-        ecom_actor.try_send(ProcessOrders()).unwrap();
+
+        for order in orders {
+            thread::sleep(Duration::from_millis(1000));
+            ecom_actor.try_send(ForwardOrder(order)).unwrap();
+        }
+        // ecom_actor.try_send(ProcessOrders()).unwrap();
 
         println!("MAIN TERMINADO");
     });
