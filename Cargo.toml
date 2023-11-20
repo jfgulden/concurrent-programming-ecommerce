@@ -12,6 +12,7 @@ actix-rt = "2.9.0"
 rand = "0.8.5"
 tokio = "1.34.0"
 tokio-stream = { version = "^0.1.14", features = ["io-util"] }
+futures = "0.3.28"
 
 [[bin]]
 name = "shop"

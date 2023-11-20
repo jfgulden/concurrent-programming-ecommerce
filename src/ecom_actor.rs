@@ -1,7 +1,10 @@
+use crate::error::ConnectionError;
 use crate::error::FileError;
+use crate::error::PurchaseError;
 use crate::messages::ecom_purchase::EcomPurchaseState;
 use crate::messages::process_orders::ForwardOrder;
-use actix::{Actor, AsyncContext, Context, StreamHandler};
+use actix::Handler;
+use actix::{Actor, AsyncContext, Context, Message, StreamHandler};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Read};
 use std::sync::Arc;
@@ -14,17 +17,17 @@ use tokio_stream::wrappers;
 #[derive(Debug, Clone)]
 
 pub struct Zone {
-    pub id: u8,
+    pub id: i32,
     pub stream: Option<Arc<Mutex<WriteHalf<TcpStream>>>>,
 }
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Message, Clone)]
+#[rtype(result = "Result<(), PurchaseError>")]
 pub struct EcomOrder {
-    pub id: u8,
+    pub id: u32,
     pub product_id: String,
     pub quantity: u32,
-    pub zone_id: u8,
-    pub shops_requested: Vec<u8>,
+    pub zone_id: i32,
+    pub shops_requested: Vec<i32>,
 }
 
 #[derive(Debug)]
@@ -87,8 +90,8 @@ impl Ecom {
         Ok(orders)
     }
 
-    fn fetch_shop_streams() -> Result<Vec<(u8, TcpStream)>, FileError> {
-        let mut streams: Vec<(u8, TcpStream)> = Vec::new();
+    fn fetch_shop_streams() -> Result<Vec<(i32, TcpStream)>, FileError> {
+        let mut streams: Vec<(i32, TcpStream)> = Vec::new();
         let location_files = fs::read_dir("tiendas").unwrap();
 
         for dir_entry in location_files {
@@ -107,10 +110,13 @@ impl Ecom {
             }
 
             let stream = std::net::TcpStream::connect(shop_info[1]).unwrap();
-            let location: u8 = shop_info[2].parse().unwrap();
+            let location: i32 = shop_info[2].parse().unwrap();
             println!("{}", location);
             streams.push((location, TcpStream::from_std(stream).unwrap()));
         }
+        //This function panics if it is not called from within a runtime with IO enabled.
+        // The runtime is usually set implicitly when this function is called from a future driven by a tokio runtime, otherwise runtime can be set explicitly with Runtime::enter function.
+
         Ok(streams)
     }
 
@@ -128,7 +134,7 @@ impl Ecom {
             return Err(FileError::WrongFormat);
         }
 
-        let mut ecom = Self {
+        let ecom = Self {
             name: ecom_info[0].to_string(),
             address: ecom_info[1].to_string(),
             pending_orders: Vec::new(),
@@ -141,7 +147,7 @@ impl Ecom {
     pub fn find_delivery_zone(&self, order: &EcomOrder) -> Option<Zone> {
         let mut zones = self.zones.clone();
         zones.sort_by(|a, b| {
-            if ((a.id - order.zone_id) as i32).abs() > ((b.id - order.zone_id) as i32).abs() {
+            if (a.id - order.zone_id).abs() > (b.id - order.zone_id).abs() {
                 std::cmp::Ordering::Greater
             } else {
                 std::cmp::Ordering::Less
@@ -175,7 +181,7 @@ impl Ecom {
         // }
         // zone_to_send
     }
-    pub fn clear_requested_shops(&mut self, order_id: u8) {
+    pub fn clear_requested_shops(&mut self, order_id: u32) {
         let order = self
             .pending_orders
             .iter_mut()
@@ -186,13 +192,18 @@ impl Ecom {
     }
 }
 
-impl Actor for Ecom {
-    type Context = Context<Self>;
+#[derive(Debug, Message)]
+#[rtype(result = "Result<(), ConnectionError>")]
+pub struct ConnectShops();
 
-    fn started(&mut self, ctx: &mut Context<Self>) {
+impl Handler<ConnectShops> for Ecom {
+    type Result = Result<(), ConnectionError>;
+
+    fn handle(&mut self, mut _msg: ConnectShops, ctx: &mut Context<Self>) -> Self::Result {
         println!("INICIANDO ECOMMERCE");
 
-        let streams = Self::fetch_shop_streams().unwrap();
+        let streams = Self::fetch_shop_streams().map_err(|_| ConnectionError::CannotCall)?;
+
         for (index, (id, stream)) in streams.into_iter().enumerate() {
             let (read, write_half) = split(stream);
             Ecom::add_stream(
@@ -203,19 +214,27 @@ impl Actor for Ecom {
             self.zones.insert(
                 index,
                 Zone {
-                    id: id.clone(),
+                    id,
                     stream: Some(Arc::new(Mutex::new(write_half))),
                 },
             );
         }
+
+        Ok(())
     }
+}
+
+impl Actor for Ecom {
+    type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Context<Self>) {}
 }
 
 impl<'a> StreamHandler<Result<String, std::io::Error>> for Ecom {
     fn handle(&mut self, read: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(line) = read {
             let order_str = line.split(',').collect::<Vec<&str>>();
-            let id = order_str[0].parse::<u8>().unwrap();
+            let id = order_str[0].parse::<u32>().unwrap();
             let state = EcomPurchaseState::from_int(order_str[1].parse::<u8>().unwrap()).unwrap();
 
             let order = self.pending_orders.iter().find(|o| o.id == id).unwrap();

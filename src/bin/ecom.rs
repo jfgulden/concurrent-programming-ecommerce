@@ -1,6 +1,8 @@
 use actix::{Actor, System};
-use concurrentes::messages::process_orders::ProcessOrders;
+use concurrentes::ecom_actor::ConnectShops;
+// use concurrentes::messages::process_orders::ProcessOrders;
 use concurrentes::{ecom_actor::Ecom, messages::process_orders::ForwardOrder};
+use std::io::stdin;
 use std::thread;
 use std::time::Duration;
 use std::{env, path::Path};
@@ -29,14 +31,21 @@ fn main() {
                 return;
             }
         };
-        let orders = Ecom::orders_from_file(args[1].as_str()).unwrap();
         // let orders = Ecom::orders_from_file(args[1].as_str());
         println!("ECOM: {:?}", ecom);
         let ecom_actor = ecom.start();
 
+        let mut input = String::new();
+        println!("Presione enter para comenzar");
+        stdin().read_line(&mut input).unwrap();
+
+        ecom_actor.send(ConnectShops()).await.unwrap();
+
+        let orders = Ecom::orders_from_file(args[1].as_str()).unwrap();
+
         for order in orders {
-            thread::sleep(Duration::from_millis(1000));
-            ecom_actor.try_send(ForwardOrder(order)).unwrap();
+            thread::sleep(Duration::from_millis(100));
+            ecom_actor.send(ForwardOrder(order)).await.unwrap();
         }
         // ecom_actor.try_send(ProcessOrders()).unwrap();
 

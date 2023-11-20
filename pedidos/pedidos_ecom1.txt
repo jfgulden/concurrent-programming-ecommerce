@@ -4,6 +4,7 @@ manzana,2,1
 banana,2,1
 coca,3,1
 galleta,5,1
+remera,200,2
 huevo,2,1
 pelota,5,1
 manzana,2,1

@@ -1,7 +1,9 @@
+use actix::fut::wrap_future;
 use actix_rt::System;
 use concurrentes::messages::ecom_purchase::EcomPurchase;
 use concurrentes::{orders::Orders, shop_actor::Shop};
 use rand::{thread_rng, Rng};
+use std::io::{stdin, stdout, Write};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::io::{split, AsyncBufReadExt, BufReader, WriteHalf};
@@ -10,6 +12,7 @@ use tokio::sync::Mutex;
 use tokio_stream::wrappers;
 extern crate actix;
 use actix::{Actor, ActorContext, Context, StreamHandler};
+use futures::future::join_all;
 use std::path::Path;
 use std::time::Duration;
 use std::{env, thread};
@@ -34,6 +37,7 @@ impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
             let order = line.split(',').collect::<Vec<&str>>();
             let purchase = EcomPurchase::parse(order, self.write.clone());
             self.shop_addr.try_send(purchase).unwrap();
+            println!("Encolado");
         }
     }
 
@@ -43,25 +47,31 @@ impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
     }
 }
 
-async fn initiate_shop_side_server(shop: actix::Addr<Shop>) {
-    let listener: TcpListener = TcpListener::bind("127.0.0.1:2346").await.unwrap();
-    while let Ok((stream, addr)) = listener.accept().await {
-        println!("[ECOM] Se conectó el Ecommerce {:?}", addr);
-        ShopSideServer::create(|ctx| {
-            let (read, write_half) = split(stream);
-            ShopSideServer::add_stream(
-                wrappers::LinesStream::new(BufReader::new(read).lines()),
-                ctx,
-            );
+fn initiate_shop_side_server(shop: actix::Addr<Shop>, addr: &str) {
+    let system = System::new();
 
-            let write = Arc::new(Mutex::new(write_half));
-            ShopSideServer {
-                addr,
-                write,
-                shop_addr: shop.clone(),
-            }
-        });
-    }
+    system.block_on(async {
+        let listener: TcpListener = TcpListener::bind(addr).await.unwrap();
+        while let Ok((stream, addr)) = listener.accept().await {
+            println!("[ECOM] Se conectó el Ecommerce {:?}", addr);
+            ShopSideServer::create(|ctx| {
+                let (read, write_half) = split(stream);
+                ShopSideServer::add_stream(
+                    wrappers::LinesStream::new(BufReader::new(read).lines()),
+                    ctx,
+                );
+
+                let write = Arc::new(Mutex::new(write_half));
+                ShopSideServer {
+                    addr,
+                    write,
+                    shop_addr: shop.clone(),
+                }
+            });
+        }
+    });
+
+    system.run();
 }
 fn main() {
     let system = System::new();
@@ -100,17 +110,30 @@ fn main() {
                 return;
             }
         };
+        let address = shop.address.clone();
         let shop_actor = shop.start();
         let shop_clone: actix::Addr<Shop> = shop_actor.clone();
 
-        let handle = thread::spawn(move || initiate_shop_side_server(shop_clone));
+        let handle = thread::spawn(move || {
+            initiate_shop_side_server(shop_clone, address.as_str());
+        });
+
+        // let orders_thread = tokio::spawn(async move {
+        stdout().flush().unwrap();
+        let mut input = String::new();
+        println!("Presione enter para comenzar");
+        stdin().read_line(&mut input).unwrap();
 
         for order in orders.list {
             let random = thread_rng().gen_range(100..=300);
             thread::sleep(Duration::from_millis(random));
             let _ = shop_actor.send(order).await.unwrap();
         }
-        handle.join().unwrap().await;
+        // });
+
+        // join_all([server_thread, orders_thread]).await;
+
+        handle.join().unwrap();
 
         println!("MAIN TERMINADO");
     });

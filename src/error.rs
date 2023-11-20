@@ -9,3 +9,8 @@ pub enum FileError {
     NotFound,
     WrongFormat,
 }
+
+#[derive(Debug)]
+pub enum ConnectionError {
+    CannotCall,
+}

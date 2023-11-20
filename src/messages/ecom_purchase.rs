@@ -87,7 +87,7 @@ impl Handler<EcomPurchase> for Shop {
     type Result = ();
 
     fn handle(&mut self, mut msg: EcomPurchase, ctx: &mut Context<Self>) -> Self::Result {
-        thread::sleep(Duration::from_millis(100));
+        thread::sleep(Duration::from_millis(200));
         let product = self.stock.iter_mut().find(|p| p.id == msg.product);
         match product {
             Some(product) => {

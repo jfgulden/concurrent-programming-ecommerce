@@ -1,5 +1,8 @@
+use std::{thread, time::Duration};
+
 use crate::{error::PurchaseError, shop_actor::Shop};
 use actix::{Context, Handler, Message};
+use rand::{thread_rng, Rng};
 
 //LocalPurchase solo va a tener 3 estados: PROCESSING, SOLD o REJECTED.
 #[derive(Debug, Clone)]
@@ -40,7 +43,7 @@ impl Handler<LocalPurchase> for Shop {
     type Result = Result<(), PurchaseError>;
 
     fn handle(&mut self, mut msg: LocalPurchase, _ctx: &mut Context<Self>) -> Self::Result {
-        // thread::sleep(Duration::from_millis(thread_rng().gen_range(500..1500)));
+        thread::sleep(Duration::from_millis(thread_rng().gen_range(200..=200)));
 
         match self.stock.iter_mut().find(|p| p.id == msg.product) {
             Some(product) => {
