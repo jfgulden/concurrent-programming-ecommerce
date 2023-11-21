@@ -22,3 +22,7 @@ src = "src/shop.rs"
 name = "ecom"
 src = "src/ecom.rs"
 
+[[bin]]
+name = "test"
+src = "src/test.rs"
+

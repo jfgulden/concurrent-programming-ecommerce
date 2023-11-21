@@ -1,4 +1,6 @@
 use crate::error::FileError;
+use crate::shop::local_purchase::LocalPurchase;
+use crate::states::LocalPurchaseState;
 use actix::{Actor, Context};
 
 use std::fs::File;
@@ -82,6 +84,32 @@ impl Shop {
         }
 
         Ok(shop)
+    }
+
+    pub fn orders_from_file(path: &str) -> Result<Vec<LocalPurchase>, FileError> {
+        let file = File::open(path).map_err(|_| FileError::NotFound)?;
+        let reader = BufReader::new(file);
+
+        let mut orders = Vec::new();
+
+        for line in reader.lines() {
+            let current_line = line.map_err(|_| FileError::WrongFormat)?;
+            let line_slices: Vec<&str> = current_line.split(',').collect();
+
+            if line_slices.len() != 2 {
+                return Err(FileError::WrongFormat);
+            }
+
+            let order = LocalPurchase {
+                product: line_slices[0].to_string(),
+                quantity: line_slices[1].parse().map_err(|_| FileError::WrongFormat)?,
+                status: LocalPurchaseState::CREATED,
+            };
+
+            orders.push(order);
+        }
+
+        Ok(orders)
     }
 }
 

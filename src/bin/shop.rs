@@ -1,8 +1,10 @@
-use actix::fut::wrap_future;
 use actix_rt::System;
-use concurrentes::messages::ecom_purchase::EcomPurchase;
-use concurrentes::{orders::Orders, shop_actor::Shop};
-use rand::{thread_rng, Rng};
+use concurrentes::error::FileError;
+use concurrentes::shop::online_purchase::OnlinePurchase;
+use concurrentes::shop::process_local_orders::ProcessLocalOrders;
+use concurrentes::shop::shop_actor::Shop;
+use futures::TryFutureExt;
+use std::env;
 use std::io::{stdin, stdout, Write};
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -12,10 +14,7 @@ use tokio::sync::Mutex;
 use tokio_stream::wrappers;
 extern crate actix;
 use actix::{Actor, ActorContext, Context, StreamHandler};
-use futures::future::join_all;
 use std::path::Path;
-use std::time::Duration;
-use std::{env, thread};
 
 const CANT_ARGS: usize = 3;
 
@@ -35,9 +34,12 @@ impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
             println!("[ECOM] Pedido recibido desde [{:?}]: {:?}", self.addr, line);
 
             let order = line.split(',').collect::<Vec<&str>>();
-            let purchase = EcomPurchase::parse(order, self.write.clone());
-            self.shop_addr.try_send(purchase).unwrap();
-            println!("Encolado");
+            let purchase = match OnlinePurchase::parse(order, self.write.clone()) {
+                Ok(purchase) => purchase,
+                Err(_) => return,
+            };
+
+            self.shop_addr.do_send(purchase);
         }
     }
 
@@ -47,95 +49,110 @@ impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
     }
 }
 
-fn initiate_shop_side_server(shop: actix::Addr<Shop>, addr: &str) {
-    let system = System::new();
+async fn initiate_shop_side_server(
+    shop: &actix::Addr<Shop>,
+    address: String,
+) -> Result<(), String> {
+    let listener: TcpListener = TcpListener::bind(address.as_str())
+        .map_err(|_| String::from("Error listening port"))
+        .await?;
 
-    system.block_on(async {
-        let listener: TcpListener = TcpListener::bind(addr).await.unwrap();
-        while let Ok((stream, addr)) = listener.accept().await {
-            println!("[ECOM] Se conectó el Ecommerce {:?}", addr);
-            ShopSideServer::create(|ctx| {
-                let (read, write_half) = split(stream);
-                ShopSideServer::add_stream(
-                    wrappers::LinesStream::new(BufReader::new(read).lines()),
-                    ctx,
-                );
+    while let Ok((stream, addr)) = listener.accept().await {
+        println!("[ECOM] Se conectó el Ecommerce {:?}", addr);
+        ShopSideServer::create(|ctx| {
+            let (read, write_half) = split(stream);
+            ShopSideServer::add_stream(
+                wrappers::LinesStream::new(BufReader::new(read).lines()),
+                ctx,
+            );
 
-                let write = Arc::new(Mutex::new(write_half));
-                ShopSideServer {
-                    addr,
-                    write,
-                    shop_addr: shop.clone(),
-                }
-            });
-        }
-    });
+            let write = Arc::new(Mutex::new(write_half));
+            ShopSideServer {
+                addr,
+                write,
+                shop_addr: shop.clone(),
+            }
+        });
+    }
 
-    system.run();
+    Ok(())
 }
 fn main() {
     let system = System::new();
 
     system.block_on(async {
-        let args: Vec<String> = env::args().collect();
-        if args.len() < CANT_ARGS {
-            println!("ERROR: shop files not provided");
-            return;
-        }
-        let path_shop = Path::new(&args[1]);
-        if !path_shop.exists() {
-            println!("ERROR: path from shop information does not exist");
-            return;
-        }
-        let path_orders = Path::new(&args[2]);
-        if !path_orders.exists() {
-            println!("ERROR: path from orders information does not exist");
-            return;
-        }
+        let args = match get_args() {
+            Ok(args) => args,
+            Err(_) => {
+                System::current().stop();
+                return;
+            }
+        };
 
-        let shop: Shop = match Shop::from_file(args[1].as_str()) {
+        let shop = match Shop::from_file(args[1].as_str()) {
             Ok(shop) => shop,
             Err(error) => {
-                println!("ERROR shop: {:?}", error);
+                println!("ERROR creando Shop: {:?}", error);
+                System::current().stop();
                 return;
             }
         };
 
-        println!("{:?}", shop);
-
-        let orders = match Orders::from_file(args[2].as_str()) {
+        let orders = match Shop::orders_from_file(args[2].as_str()) {
             Ok(orders) => orders,
             Err(error) => {
-                println!("ERROR orders: {:?}", error);
+                println!("ERROR creando Orders: {:?}", error);
+                System::current().stop();
                 return;
             }
         };
+
+        enter_to_start();
+
         let address = shop.address.clone();
         let shop_actor = shop.start();
-        let shop_clone: actix::Addr<Shop> = shop_actor.clone();
 
-        let handle = thread::spawn(move || {
-            initiate_shop_side_server(shop_clone, address.as_str());
-        });
-
-        // let orders_thread = tokio::spawn(async move {
-        stdout().flush().unwrap();
-        let mut input = String::new();
-        println!("Presione enter para comenzar");
-        stdin().read_line(&mut input).unwrap();
-
-        for order in orders.list {
-            let random = thread_rng().gen_range(100..=300);
-            thread::sleep(Duration::from_millis(random));
-            let _ = shop_actor.send(order).await.unwrap();
-        }
-        // });
-
-        // join_all([server_thread, orders_thread]).await;
-
-        handle.join().unwrap();
-
-        println!("MAIN TERMINADO");
+        if let Err(err) = shop_actor.send(ProcessLocalOrders(orders)).await {
+            println!("ERROR: {:?}", err);
+            System::current().stop();
+            return;
+        };
+        if let Err(err) = initiate_shop_side_server(&shop_actor, address).await {
+            println!("ERROR: {:?}", err);
+            System::current().stop();
+            return;
+        };
+        // server_fut.await;
     });
-    system.run().unwrap();
+    if system.run().is_err() {
+        println!("ERROR: system error");
+    }
+}
+
+fn get_args() -> Result<Vec<String>, FileError> {
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() < CANT_ARGS {
+        println!("ERROR: shop files not provided");
+        return Err(FileError::NotFound);
+    }
+    let path_shop = Path::new(&args[1]);
+    if !path_shop.exists() {
+        println!("ERROR: path from shop information does not exist");
+        return Err(FileError::NotFound);
+    }
+    let path_orders = Path::new(&args[2]);
+    if !path_orders.exists() {
+        println!("ERROR: path from orders information does not exist");
+        return Err(FileError::NotFound);
+    }
+
+    return Ok(args);
+}
+
+fn enter_to_start() {
+    let _ = stdout().flush();
+    let mut input = String::new();
+    println!("Presione enter para comenzar");
+    let _ = stdin().read_line(&mut input);
 }

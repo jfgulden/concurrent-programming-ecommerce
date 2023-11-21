@@ -10,7 +10,9 @@ pub enum FileError {
     WrongFormat,
 }
 
-#[derive(Debug)]
-pub enum ConnectionError {
+pub enum StreamError {
     CannotCall,
+    WrongFormat,
+    CannotRead,
+    CannotWrite,
 }

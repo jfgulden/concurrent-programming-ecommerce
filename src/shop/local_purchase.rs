@@ -1,26 +1,11 @@
 use std::{thread, time::Duration};
 
-use crate::{error::PurchaseError, shop_actor::Shop};
+use crate::{constants::PURCHASE_MILLIS, error::PurchaseError, states::LocalPurchaseState};
 use actix::{Context, Handler, Message};
-use rand::{thread_rng, Rng};
 
-//LocalPurchase solo va a tener 3 estados: PROCESSING, SOLD o REJECTED.
-#[derive(Debug, Clone)]
-pub enum LocalPurchaseState {
-    PROCESSING,
-    SOLD,
-    REJECTED,
-}
-impl LocalPurchaseState {
-    pub fn to_string(&self) -> String {
-        match self {
-            LocalPurchaseState::PROCESSING => "PROCESANDO".to_string(),
-            LocalPurchaseState::SOLD => "VENDIDO".to_string(),
-            LocalPurchaseState::REJECTED => "RECHAZADO".to_string(),
-        }
-    }
-}
-#[derive(Debug, Message)]
+use super::shop_actor::Shop;
+
+#[derive(Debug, Message, Clone)]
 #[rtype(result = "Result<(), PurchaseError>")]
 pub struct LocalPurchase {
     pub product: String,
@@ -43,7 +28,7 @@ impl Handler<LocalPurchase> for Shop {
     type Result = Result<(), PurchaseError>;
 
     fn handle(&mut self, mut msg: LocalPurchase, _ctx: &mut Context<Self>) -> Self::Result {
-        thread::sleep(Duration::from_millis(thread_rng().gen_range(200..=200)));
+        thread::sleep(Duration::from_millis(PURCHASE_MILLIS));
 
         match self.stock.iter_mut().find(|p| p.id == msg.product) {
             Some(product) => {

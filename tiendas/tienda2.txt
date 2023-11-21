@@ -1,8 +1,8 @@
 palermo,localhost:2347,2
 ----------------------
-buzo,10
-campera,20
-zapato,10
-gorro,5
-guante,24
-remera,500
+buzo,100
+campera,200
+zapato,100
+gorro,500
+guante,240
+remera,5000

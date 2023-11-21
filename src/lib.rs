@@ -1,5 +1,5 @@
-pub mod ecom_actor;
+pub mod constants;
+pub mod ecom;
 pub mod error;
-pub mod messages;
-pub mod orders;
-pub mod shop_actor;
+pub mod shop;
+pub mod states;
