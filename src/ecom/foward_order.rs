@@ -39,7 +39,15 @@ impl Handler<FowardOrder> for Ecom {
 
         wrap_future::<_, Self>(async move {
             let mut write = msg.shop.stream.lock().await;
-            let _bytes = write.write_all(message.as_bytes()).await.unwrap();
+            if write.write_all(message.as_bytes()).await.is_err() {
+                println!(
+                    "{} No se pudo enviar el pedido a la tienda en [{:?}]",
+                    "[ECOM]".purple(),
+                    msg.shop.zone_id
+                );
+                // shops.retain(|s| s.zone_id != msg.shop.zone_id);
+                // ctx.address().do_send(ProcessOrder(msg.order));
+            };
         })
         .wait(ctx);
 
@@ -57,7 +65,7 @@ impl Handler<FowardOrder> for Ecom {
                         None => return, // no es mas pendiente, ya se entrego o fue cancelada por no haber mas tiendas
                     };
 
-                    if msg.shop.zone_id == order.shops_requested.last().unwrap().clone() {
+                    if msg.shop.zone_id == order.shops_requested.last().unwrap_or(&-1).clone() {
                         println!("[ECOM] PERDIDO  {}x {}", order.quantity, order.product_id);
                         ctx.address().do_send(ProcessOrder(order.clone()));
                     } // caso contrario, sigue pendiente pero ya fue enviada a otra tienda

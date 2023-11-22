@@ -99,7 +99,9 @@ impl OnlinePurchase {
         wrap_future::<_, Shop>(async move {
             let mut write = self.write.lock().await;
             let msg = format!("{},{}\n", self.id, self.state.to_int());
-            write.write_all(msg.as_bytes()).await.unwrap();
+            if write.write_all(msg.as_bytes()).await.is_err() {
+                println!("Error al enviar mensaje");
+            }
         })
         .wait(ctx);
     }

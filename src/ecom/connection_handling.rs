@@ -1,3 +1,5 @@
+use std::io::ErrorKind;
+
 use actix::{dev::ContextFutureSpawner, fut::wrap_future, Addr, Context, Handler, Message};
 use colored::Colorize;
 use tokio::io::AsyncWriteExt;
@@ -10,7 +12,13 @@ pub fn connection_handling(ecom: Addr<Ecom>) {
     std::thread::spawn(move || {
         for line in std::io::stdin().lines() {
             if let Ok(command) = line {
-                let (command, tienda_id) = parse_command(command);
+                let (command, tienda_id) = match parse_command(command) {
+                    Ok((command, tienda_id)) => (command, tienda_id),
+                    Err(e) => {
+                        println!("Error: {:?}", e);
+                        continue;
+                    }
+                };
                 if command == "s" {
                     ecom.do_send(Stop(tienda_id));
                 } else if command == "r" {
@@ -21,15 +29,22 @@ pub fn connection_handling(ecom: Addr<Ecom>) {
     });
 }
 
-fn parse_command(line: String) -> (String, i32) {
+fn parse_command(line: String) -> Result<(String, i32), ErrorKind> {
     let line = line.as_str();
-    let command = line.get(0..=0).unwrap();
+    let command = match line.get(0..=0) {
+        Some(c) => c,
+        None => return Err(ErrorKind::InvalidData),
+    };
 
-    let tienda_id: i32 = line.get(1..).unwrap().parse().unwrap();
+    let tienda_id = match line.get(1..) {
+        Some(id) => id.parse::<i32>(),
+        None => return Err(ErrorKind::InvalidData),
+    };
 
-    println!("Commando: {} para: {}", command, tienda_id);
-
-    (command.to_string(), tienda_id)
+    match tienda_id {
+        Ok(id) => Ok((command.to_string(), id)),
+        Err(_) => Err(ErrorKind::InvalidData),
+    }
 }
 
 #[derive(Debug, Message)]
@@ -54,7 +69,7 @@ impl Handler<Stop> for Ecom {
         if let Some(shop_stream) = shop_stream {
             wrap_future::<_, Self>(async move {
                 let mut guard = shop_stream.lock().await;
-                guard.shutdown().await.unwrap();
+                let _ = guard.shutdown().await;
             })
             .wait(ctx);
             println!("{} Desconectando tienda {}...", "[ECOM]".purple(), zone_id);
