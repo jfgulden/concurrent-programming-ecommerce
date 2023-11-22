@@ -22,7 +22,7 @@ Before compiling and running the program, we must create some files:
 ```
 An example of it is shown at pedidos/ecom1.txt
 
-- A pedidos/[local_orders_file].txt for each shop, which will contains all the local orders, with the following format:
+- A pedidos/[local_orders_filename].txt for each shop, which will contains all the local orders, with the following format:
 
 ```
 <order1_product_name>,<quantity>
