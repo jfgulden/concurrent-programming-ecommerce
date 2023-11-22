@@ -2,8 +2,6 @@ use crate::ecom::process_order::ProcessOrder;
 use crate::error::FileError;
 use crate::error::PurchaseError;
 use crate::states::OnlinePurchaseState;
-use actix::dev::ContextFutureSpawner;
-use actix::fut::wrap_future;
 use actix::{Actor, AsyncContext, Context, Message, StreamHandler};
 use std::collections::HashMap;
 use std::fs::File;
@@ -15,10 +13,19 @@ use super::conneted_shops::ConnectedShop;
 #[rtype(result = "Result<(), PurchaseError>")]
 pub struct EcomOrder {
     pub id: u32,
-    pub product_id: String,
+    pub product: String,
     pub quantity: u32,
     pub zone_id: i32,
     pub shops_requested: Vec<i32>,
+}
+
+impl EcomOrder {
+    pub fn parse(&self) -> String {
+        format!(
+            "{},{},{},{}\n",
+            self.id, self.product, self.quantity, self.zone_id
+        )
+    }
 }
 
 #[derive(Debug)]
@@ -88,7 +95,7 @@ impl Ecom {
             }
             let ecom_order = EcomOrder {
                 id: line_number,
-                product_id: product_data[0].to_string(),
+                product: product_data[0].to_string(),
                 quantity: product_data[1]
                     .parse()
                     .map_err(|_| FileError::WrongFormat)?,
@@ -155,7 +162,7 @@ impl StreamHandler<Result<String, std::io::Error>> for Ecom {
                 order.shops_requested.last().unwrap_or(&0),
                 state.to_string(),
                 order.quantity,
-                order.product_id
+                order.product
             );
 
             match state {
@@ -169,5 +176,96 @@ impl StreamHandler<Result<String, std::io::Error>> for Ecom {
 
     fn finished(&mut self, _ctx: &mut Self::Context) {
         println!("[ECOM] [{:?}] Desconectado", self.address);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use std::{sync::Arc, thread, time::Duration};
+    use tokio::{io::split, net::TcpStream, sync::Mutex};
+
+    use crate::ecom::ecom_actor::EcomOrder;
+
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    #[actix_rt::test]
+    async fn test_find_delivery_zone() {
+        thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("localhost:12355").unwrap();
+            listener.accept().unwrap();
+        });
+        thread::sleep(Duration::from_millis(100));
+        let stream = std::net::TcpStream::connect("localhost:12355").unwrap();
+        let tokio_stream = TcpStream::from_std(stream).unwrap();
+        let (_read, write) = split(tokio_stream);
+        let write = Arc::new(Mutex::new(write));
+        let conneted_shops = vec![
+            ConnectedShop {
+                name: "retiro".to_string(),
+                zone_id: 1,
+                stream: write.clone(),
+            },
+            ConnectedShop {
+                name: "palermo".to_string(),
+                zone_id: 5,
+                stream: write.clone(),
+            },
+            ConnectedShop {
+                name: "recoleta".to_string(),
+                zone_id: 11,
+                stream: write.clone(),
+            },
+            ConnectedShop {
+                name: "belgrano".to_string(),
+                zone_id: 20,
+                stream: write,
+            },
+        ];
+        let ecom = Ecom {
+            name: String::from("ecom"),
+            address: String::from("localhost:123"),
+            pending_orders: HashMap::new(),
+            shops: conneted_shops,
+        };
+
+        let order1 = EcomOrder {
+            id: 1,
+            product: String::from("1"),
+            quantity: 1,
+            zone_id: 1,
+            shops_requested: vec![],
+        };
+        let order4 = EcomOrder {
+            id: 1,
+            product: String::from("1"),
+            quantity: 1,
+            zone_id: 4,
+            shops_requested: vec![],
+        };
+        let order7 = EcomOrder {
+            id: 1,
+            product: String::from("1"),
+            quantity: 1,
+            zone_id: 7,
+            shops_requested: vec![],
+        };
+        let order15 = EcomOrder {
+            id: 1,
+            product: String::from("1"),
+            quantity: 1,
+            zone_id: 15,
+            shops_requested: vec![],
+        };
+        let shop1 = ecom.find_delivery_shop(&order1).unwrap();
+        let shop4 = ecom.find_delivery_shop(&order4).unwrap();
+        let shop7 = ecom.find_delivery_shop(&order7).unwrap();
+        let shop15 = ecom.find_delivery_shop(&order15).unwrap();
+
+        assert_eq!(shop1.zone_id, 1);
+        assert_eq!(shop4.zone_id, 5);
+        assert_eq!(shop7.zone_id, 5);
+        assert_eq!(shop15.zone_id, 11);
     }
 }

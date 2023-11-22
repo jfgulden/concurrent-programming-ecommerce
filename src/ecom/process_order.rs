@@ -30,7 +30,7 @@ impl Handler<ProcessOrder> for Ecom {
             None => {
                 println!(
                     "[ECOM] Pedido {:<2}x {} rechazado: No hay mas tiendas",
-                    order.quantity, order.product_id
+                    order.quantity, order.product
                 );
                 self.pending_orders.remove_entry(&msg.0.id);
                 return;

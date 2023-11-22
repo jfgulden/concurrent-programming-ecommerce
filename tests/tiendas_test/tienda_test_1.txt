@@ -1,0 +1,8 @@
+retiro,localhost:1700,1
+----------------------
+manzana,100
+banana,200
+coca,100
+galleta,50
+huevo,240
+pelota,5000

@@ -25,22 +25,19 @@ impl Handler<FowardOrder> for Ecom {
     fn handle(&mut self, msg: FowardOrder, ctx: &mut Self::Context) -> Self::Result {
         println!(
             "[ECOM] Enviando pedido a tienda en [{:?}]: {:<2}x {}",
-            msg.shop.zone_id, msg.order.quantity, msg.order.product_id
+            msg.shop.zone_id, msg.order.quantity, msg.order.product
         );
 
-        let message = format!(
-            "{},{},{},{}\n",
-            msg.order.id, msg.order.product_id, msg.order.quantity, msg.order.zone_id
-        );
+        let message = msg.order.parse();
 
-        // QUE ESTO RECORRA UN VECTOR DESDE IDEAL A MENOS IDEAL
-        let write_mutex = msg.shop.stream.clone().unwrap();
+        let write_mutex = msg.shop.stream.clone();
         wrap_future::<_, Self>(async move {
             let mut write = write_mutex.lock().await;
-            let _bytes = write.write_all(message.as_bytes()).await.unwrap();
+            if let Err(e) = write.write_all(message.as_bytes()).await {
+                println!("[ECOM] Error al enviar pedido a tienda: {:?}", e);
+            }
         })
         .spawn(ctx);
-        // SI HUBO "EXITO" RECIEN ACA INSERTAR EN SHOPS_REQUESTED, (NO EN PROCESS ORDER) (unwrap)
 
         // timeout de perdida de pedido
         // solo se reenvia a otro si:
@@ -55,9 +52,12 @@ impl Handler<FowardOrder> for Ecom {
                         Some(order) => order,
                         None => return, // no es mas pendiente, ya se entrego o fue cancelada por no haber mas tiendas
                     };
-
-                    if msg.shop.zone_id == order.shops_requested.last().unwrap().clone() {
-                        println!("[ECOM] PERDIDO  {}x {}", order.quantity, order.product_id);
+                    let last_shop_requested = match order.shops_requested.last() {
+                        Some(last) => last,
+                        None => return, // no se mando a ninguna tienda, no se reenvia
+                    };
+                    if msg.shop.zone_id == last_shop_requested.clone() {
+                        println!("[ECOM] PERDIDO  {}x {}", order.quantity, order.product);
                         ctx.address().do_send(ProcessOrder(order.clone()));
                     } // caso contrario, sigue pendiente pero ya fue enviada a otra tienda
 

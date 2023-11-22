@@ -19,7 +19,7 @@ impl Handler<ConnectShops> for Ecom {
     type Result = Result<(), StreamError>;
 
     fn handle(&mut self, mut _msg: ConnectShops, ctx: &mut Context<Self>) -> Self::Result {
-        let streams = ConnectedShop::from_file().map_err(|_| StreamError::CannotCall)?;
+        let streams = ConnectedShop::from_file("tiendas").map_err(|_| StreamError::CannotCall)?;
 
         for (name, zone_id, stream) in streams.into_iter() {
             let (read, write_half) = split(stream);
@@ -31,7 +31,7 @@ impl Handler<ConnectShops> for Ecom {
             self.shops.push(ConnectedShop {
                 name,
                 zone_id,
-                stream: Some(Arc::new(Mutex::new(write_half))),
+                stream: Arc::new(Mutex::new(write_half)),
             });
         }
 
