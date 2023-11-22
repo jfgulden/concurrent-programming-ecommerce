@@ -9,7 +9,8 @@ Repo for Concurrentes FIUBA
 
 Before compiling and running the program, we must create some files:
 
-- an [ecom_orders_file] for each ecom, which will contains all the online orders, with the following format:
+### Orders
+- an pedidos/[ecom_orders_file].txt for each ecom, which will contains all the online orders, with the following format:
 
 ```
 <ecom_id>,<ecom_address:port>
@@ -21,7 +22,7 @@ Before compiling and running the program, we must create some files:
 ```
 An example of it is shown at pedidos/ecom1.txt
 
-- A [local_orders_file] for each shop, which will contains all the local orders, with the following format:
+- A pedidos/[local_orders_file].txt for each shop, which will contains all the local orders, with the following format:
 
 ```
 <order1_product_name>,<quantity>
@@ -31,8 +32,9 @@ An example of it is shown at pedidos/ecom1.txt
 ```
 An example of it is shown at pedidos/tienda1.txt
 
+### Shops
 
-- A [local_stock_file] for each shop, which will contains all the local stock, with the following format:
+- A tiendas/[local_shop_file].txt for each shop, which will contains all the local stock, with the following format:
 
 ```
 <shop_zone_name>,<shop_address:port>,<shop_zone_id>
@@ -49,13 +51,13 @@ An example of it is shown at tiendas/tienda1.txt
 First, we should run the shop binary:
 
 ```
-cargo run --bin shop <local_stock_file> <local_orders_file>
+cargo run --bin shop [local_shop_file]
 ```
 
 Then, we should run the ecom binary:
 
 ```
-cargo run --bin ecom <ecom_orders_file>
+cargo run --bin ecom [ecom_orders_file]
 ```
 
 If we do so, the shop will start listening for online orders while it processes local orders, and the ecom will be sending those online orders to the shop.
@@ -63,14 +65,14 @@ If we run the ecom but we don't run any shops, the ecom will try to send the ord
 
 ## Ecom shortcuts
 
-We can disconnect shops from the ecom by pressing 's[shop_id]', and pressing the enter key.
-We can try to reconnect to a shop from the ecom by pressing 'r[shop_id]', and pressing the enter key.
+We can disconnect shops from the ecom by pressing 's[shop_zone_id]', and pressing the enter key.
+We can try to reconnect to a shop from the ecom by pressing 'r[shop_zone_id]', and pressing the enter key.
 
 For example:
     
     ``` s1 ```
-    Disconnetcs shop 1 from the ecom
+    Disconnects shop 1 from the ecom
     ``` r1 ```
-    Tries to reconnect shop 1 to the ecom
+    Tries to (re)connect shop 1 to the ecom
 
 With these shortcuts we can play with the execution orders of the ecom and the shops, and see how they behave.
