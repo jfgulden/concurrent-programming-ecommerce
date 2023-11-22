@@ -17,9 +17,9 @@ pub struct ConnectedShop {
 }
 
 impl ConnectedShop {
-    pub fn from_file() -> Result<Vec<(String, i32, String)>, FileError> {
+    pub fn from_file(filepath: &str) -> Result<Vec<(String, i32, String)>, FileError> {
         let mut streams: Vec<(String, i32, String)> = Vec::new();
-        let location_files = fs::read_dir("tiendas").map_err(|_| FileError::NotFound)?;
+        let location_files = fs::read_dir(filepath).map_err(|_| FileError::NotFound)?;
 
         for dir_entry in location_files {
             let file = File::open(dir_entry.map_err(|_| FileError::NotFound)?.path());
@@ -43,3 +43,24 @@ impl ConnectedShop {
     }
     // if let Ok(stream) = s
 }
+
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use std::path::PathBuf;
+
+//     #[test]
+//     fn test_from_file() {
+//         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+//         d.push("tests/tiendas_test");
+
+//         let streams = ConnectedShop::from_file().unwrap();
+//         let first_stream = &streams[0];
+
+//         assert_eq!(streams.len(), 1);
+
+//         assert_eq!(first_stream.0, "retiro");
+//         assert_eq!(first_stream.1, 1);
+//         assert_eq!(first_stream.2.peer_addr().unwrap().port(), 1700);
+//     }
+// }

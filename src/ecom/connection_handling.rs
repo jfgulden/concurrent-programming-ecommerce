@@ -87,7 +87,7 @@ impl Handler<Reconnect> for Ecom {
     fn handle(&mut self, msg: Reconnect, ctx: &mut Context<Self>) -> Self::Result {
         let zone_id = msg.0;
 
-        let streams = ConnectedShop::from_file().map_err(|_| StreamError::CannotCall)?;
+        let streams = ConnectedShop::from_file("tiendas").map_err(|_| StreamError::CannotCall)?;
 
         let mut new_shop = None;
         for shop in streams {

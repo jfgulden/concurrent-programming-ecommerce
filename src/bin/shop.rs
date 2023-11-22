@@ -15,7 +15,7 @@ extern crate actix;
 use actix::{Actor, StreamHandler};
 use std::path::Path;
 
-const CANT_ARGS: usize = 3;
+const CANT_ARGS: usize = 2;
 
 async fn initiate_shop_side_server(
     shop: &actix::Addr<Shop>,
@@ -51,7 +51,7 @@ fn main() {
     let system = System::new();
 
     system.block_on(async {
-        let args = match get_args() {
+        let (path_shop, path_orders) = match get_args() {
             Ok(args) => args,
             Err(_) => {
                 System::current().stop();
@@ -59,7 +59,7 @@ fn main() {
             }
         };
 
-        let shop = match Shop::from_file(args[1].as_str()) {
+        let shop = match Shop::from_file(path_shop.as_str()) {
             Ok(shop) => shop,
             Err(error) => {
                 println!("ERROR creando Shop: {:?}", error);
@@ -68,7 +68,7 @@ fn main() {
             }
         };
 
-        let orders = match Shop::orders_from_file(args[2].as_str()) {
+        let orders = match Shop::orders_from_file(path_orders.as_str()) {
             Ok(orders) => orders,
             Err(error) => {
                 println!("ERROR creando Orders: {:?}", error);
@@ -97,25 +97,25 @@ fn main() {
     }
 }
 
-fn get_args() -> Result<Vec<String>, FileError> {
+fn get_args() -> Result<(String, String), FileError> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < CANT_ARGS {
         println!("ERROR: shop files not provided");
         return Err(FileError::NotFound);
     }
-    let path_shop = Path::new(&args[1]);
-    if !path_shop.exists() {
+    let path_shop = format!("tiendas/{}.txt", &args[1]);
+    if !Path::new(&path_shop.as_str()).exists() {
         println!("ERROR: path from shop information does not exist");
         return Err(FileError::NotFound);
     }
-    let path_orders = Path::new(&args[2]);
-    if !path_orders.exists() {
+    let path_orders = format!("pedidos/{}.txt", &args[1]);
+    if !Path::new(&path_orders.as_str()).exists() {
         println!("ERROR: path from orders information does not exist");
         return Err(FileError::NotFound);
     }
 
-    Ok(args)
+    return Ok((path_shop, path_orders));
 }
 
 fn enter_to_start() {

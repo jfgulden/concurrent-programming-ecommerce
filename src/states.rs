@@ -4,7 +4,7 @@ use rand::{thread_rng, Rng};
 use crate::constants::DELIVER_LOST_RATE;
 
 //LocalPurchase solo va a tener 3 estados: CREATED, SOLD o REJECTED.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LocalPurchaseState {
     CREATED,
     SOLD,

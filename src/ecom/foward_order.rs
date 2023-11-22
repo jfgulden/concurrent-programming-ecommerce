@@ -32,10 +32,7 @@ impl Handler<FowardOrder> for Ecom {
             msg.order.product_id
         );
 
-        let message = format!(
-            "{},{},{},{}\n",
-            msg.order.id, msg.order.product_id, msg.order.quantity, msg.order.zone_id
-        );
+        let message = msg.order.parse();
 
         wrap_future::<_, Self>(async move {
             let mut write = msg.shop.stream.lock().await;
@@ -45,8 +42,6 @@ impl Handler<FowardOrder> for Ecom {
                     "[ECOM]".purple(),
                     msg.shop.zone_id
                 );
-                // shops.retain(|s| s.zone_id != msg.shop.zone_id);
-                // ctx.address().do_send(ProcessOrder(msg.order));
             };
         })
         .wait(ctx);

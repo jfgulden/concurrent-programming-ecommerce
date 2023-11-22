@@ -13,7 +13,7 @@ use super::{deliver_purchase::DeliverPurchase, shop_actor::Shop};
 
 // Message
 #[derive(Debug, Message, Clone)]
-#[rtype(result = "()")]
+#[rtype(result = "Result<OnlinePurchaseState, ()>")]
 pub struct OnlinePurchase {
     pub id: u8,
     pub ecom: String,
@@ -25,7 +25,7 @@ pub struct OnlinePurchase {
 }
 
 impl Handler<OnlinePurchase> for Shop {
-    type Result = ();
+    type Result = Result<OnlinePurchaseState, ()>;
 
     fn handle(&mut self, mut msg: OnlinePurchase, ctx: &mut Context<Self>) -> Self::Result {
         thread::sleep(Duration::from_millis(PURCHASE_MILLIS));
@@ -47,13 +47,16 @@ impl Handler<OnlinePurchase> for Shop {
         }
         msg.print_status();
 
+        let result = msg.state.clone();
         // si fue rechazado, se envia el rechazo
         if msg.state == OnlinePurchaseState::REJECTED {
             msg.send_msg(ctx);
-            return;
+            return Ok(result);
         }
 
         ctx.address().do_send(DeliverPurchase { purchase: msg });
+
+        Ok(result)
     }
 }
 
@@ -66,7 +69,8 @@ impl OnlinePurchase {
         let id = line[0]
             .parse::<u8>()
             .map_err(|_| StreamError::WrongFormat)?;
-        let product_id = line[1].to_string();
+
+        let product = line[1].to_string();
         let quantity = line[2]
             .parse::<u32>()
             .map_err(|_| StreamError::WrongFormat)?;
@@ -77,7 +81,7 @@ impl OnlinePurchase {
         Ok(OnlinePurchase {
             id,
             ecom,
-            product: product_id,
+            product,
             quantity,
             zone_id,
             write: write_half,
@@ -104,5 +108,221 @@ impl OnlinePurchase {
             }
         })
         .wait(ctx);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use actix::Actor;
+    use tokio::io::split;
+
+    use super::*;
+    use crate::{ecom::ecom_actor::EcomOrder, shop::shop_actor::Product};
+
+    #[actix_rt::test]
+    async fn test_parsing_online_purchase() {
+        let order = EcomOrder {
+            id: 1,
+            product_id: String::from("manzana"),
+            quantity: 1,
+            zone_id: 1,
+            shops_requested: Vec::new(),
+        };
+        let mut line: String = order.parse();
+        thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("127.0.0.1:18500").unwrap();
+            listener.accept().unwrap();
+        });
+        thread::sleep(Duration::from_millis(100));
+        let stream = std::net::TcpStream::connect("127.0.0.1:18500").unwrap();
+        let tokio_stream = TcpStream::from_std(stream).unwrap();
+        let (_read, write) = split(tokio_stream);
+        line.truncate(line.len() - 1);
+        let message = line.split(',').collect::<Vec<&str>>();
+        let purchase =
+            OnlinePurchase::parse(message, "2".to_string(), Arc::new(Mutex::new(write))).unwrap();
+        assert_eq!(order.id, purchase.id.into());
+        assert_eq!(order.product_id, purchase.product);
+        assert_eq!("2".to_string(), purchase.ecom);
+        assert_eq!(order.quantity, purchase.quantity);
+        assert_eq!(order.zone_id, purchase.zone_id.into());
+    }
+
+    #[actix_rt::test]
+    async fn test_online_purchase_sold() {
+        let shop = Shop {
+            name: "Tienda 1".to_string(),
+            address: "localhost:9888".to_string(),
+            location: 1,
+            stock: vec![Product {
+                id: "A".to_string(),
+                stock: 10,
+                reserved: 0,
+            }],
+        }
+        .start();
+
+        thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("127.0.0.1:28510").unwrap();
+            listener.accept().unwrap();
+        });
+        thread::sleep(Duration::from_millis(100));
+        let stream = std::net::TcpStream::connect("127.0.0.1:28510").unwrap();
+        let tokio_stream = TcpStream::from_std(stream).unwrap();
+        let (_read, write) = split(tokio_stream);
+
+        let order = OnlinePurchase {
+            id: 1,
+            ecom: "1".to_string(),
+            zone_id: 1,
+            write: Arc::new(Mutex::new(write)),
+            product: "A".to_string(),
+            quantity: 1,
+            state: OnlinePurchaseState::RECEIVED,
+        };
+
+        let result = shop.send(order).await.unwrap();
+
+        assert_eq!(result.unwrap(), OnlinePurchaseState::RESERVED);
+    }
+
+    #[actix_rt::test]
+    async fn test_online_purchase_no_stock() {
+        let shop = Shop {
+            name: "Tienda 1".to_string(),
+            address: "localhost:9888".to_string(),
+            location: 1,
+            stock: vec![Product {
+                id: "A".to_string(),
+                stock: 10,
+                reserved: 0,
+            }],
+        }
+        .start();
+
+        thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("127.0.0.1:28501").unwrap();
+            listener.accept().unwrap();
+        });
+        thread::sleep(Duration::from_millis(100));
+        let stream = std::net::TcpStream::connect("127.0.0.1:28501").unwrap();
+        let tokio_stream = TcpStream::from_std(stream).unwrap();
+        let (_read, write) = split(tokio_stream);
+
+        let order = OnlinePurchase {
+            id: 1,
+            zone_id: 1,
+            ecom: "1".to_string(),
+            write: Arc::new(Mutex::new(write)),
+            product: "A".to_string(),
+            quantity: 11,
+            state: OnlinePurchaseState::RECEIVED,
+        };
+
+        let result = shop.send(order).await.unwrap();
+
+        assert_eq!(result.unwrap(), OnlinePurchaseState::REJECTED);
+    }
+
+    #[actix_rt::test]
+    async fn test_online_purchase_no_product() {
+        let shop = Shop {
+            name: "Tienda 1".to_string(),
+            address: "localhost:9888".to_string(),
+            location: 1,
+            stock: vec![Product {
+                id: "A".to_string(),
+                stock: 10,
+                reserved: 0,
+            }],
+        }
+        .start();
+
+        thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("127.0.0.1:28502").unwrap();
+            listener.accept().unwrap();
+        });
+        thread::sleep(Duration::from_millis(100));
+        let stream = std::net::TcpStream::connect("127.0.0.1:28502").unwrap();
+        let tokio_stream = TcpStream::from_std(stream).unwrap();
+        let (_read, write) = split(tokio_stream);
+
+        let order = OnlinePurchase {
+            id: 1,
+            zone_id: 1,
+            ecom: "1".to_string(),
+            write: Arc::new(Mutex::new(write)),
+            product: "B".to_string(),
+            quantity: 1,
+            state: OnlinePurchaseState::RECEIVED,
+        };
+
+        let result = shop.send(order).await.unwrap();
+
+        assert_eq!(result.unwrap(), OnlinePurchaseState::REJECTED);
+    }
+
+    #[actix_rt::test]
+    async fn test_online_purchase_order_until_no_stock() {
+        let shop = Shop {
+            name: "Tienda 1".to_string(),
+            address: "localhost:9888".to_string(),
+            location: 1,
+            stock: vec![Product {
+                id: "A".to_string(),
+                stock: 10,
+                reserved: 0,
+            }],
+        }
+        .start();
+
+        thread::spawn(move || {
+            let listener = std::net::TcpListener::bind("127.0.0.1:28503").unwrap();
+            listener.accept().unwrap();
+        });
+        thread::sleep(Duration::from_millis(100));
+        let stream = std::net::TcpStream::connect("127.0.0.1:28503").unwrap();
+        let tokio_stream = TcpStream::from_std(stream).unwrap();
+        let (_read, write) = split(tokio_stream);
+        let write = Arc::new(Mutex::new(write));
+
+        let order = OnlinePurchase {
+            id: 1,
+            zone_id: 1,
+            ecom: "1".to_string(),
+            write: write.clone(),
+            product: "A".to_string(),
+            quantity: 4,
+            state: OnlinePurchaseState::RECEIVED,
+        };
+
+        let result = shop.send(order).await.unwrap();
+        assert_eq!(result.unwrap(), OnlinePurchaseState::RESERVED);
+
+        let order2 = OnlinePurchase {
+            id: 1,
+            zone_id: 1,
+            ecom: "1".to_string(),
+            write: write.clone(),
+            product: "A".to_string(),
+            quantity: 4,
+            state: OnlinePurchaseState::RECEIVED,
+        };
+
+        let result = shop.send(order2).await.unwrap();
+        assert_eq!(result.unwrap(), OnlinePurchaseState::RESERVED);
+
+        let order3 = OnlinePurchase {
+            id: 1,
+            zone_id: 1,
+            ecom: "1".to_string(),
+            write: write.clone(),
+            product: "A".to_string(),
+            quantity: 4,
+            state: OnlinePurchaseState::RECEIVED,
+        };
+
+        let result = shop.send(order3).await.unwrap();
+        assert_eq!(result.unwrap(), OnlinePurchaseState::REJECTED);
     }
 }
