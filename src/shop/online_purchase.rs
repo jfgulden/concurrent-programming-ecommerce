@@ -128,7 +128,7 @@ mod tests {
             zone_id: 1,
             shops_requested: Vec::new(),
         };
-        let mut line: String = order.parse();
+        let mut line: String = order.as_string();
         thread::spawn(move || {
             let listener = std::net::TcpListener::bind("127.0.0.1:18500").unwrap();
             listener.accept().unwrap();

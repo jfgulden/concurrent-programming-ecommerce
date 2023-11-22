@@ -115,7 +115,7 @@ fn get_args() -> Result<(String, String), FileError> {
         return Err(FileError::NotFound);
     }
 
-    return Ok((path_shop, path_orders));
+    Ok((path_shop, path_orders))
 }
 
 fn enter_to_start() {

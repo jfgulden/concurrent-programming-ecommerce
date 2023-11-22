@@ -32,7 +32,7 @@ impl Handler<FowardOrder> for Ecom {
             msg.order.product_id
         );
 
-        let message = msg.order.parse();
+        let message = msg.order.as_string();
 
         wrap_future::<_, Self>(async move {
             let mut write = msg.shop.stream.lock().await;

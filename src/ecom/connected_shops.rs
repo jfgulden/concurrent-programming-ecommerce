@@ -44,23 +44,18 @@ impl ConnectedShop {
     // if let Ok(stream) = s
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use std::path::PathBuf;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_from_file() {
+        let streams = ConnectedShop::from_file("tests/tiendas_test").unwrap();
+        let first_stream = &streams[0];
 
-//     #[test]
-//     fn test_from_file() {
-//         let mut d = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-//         d.push("tests/tiendas_test");
+        assert_eq!(streams.len(), 1);
 
-//         let streams = ConnectedShop::from_file().unwrap();
-//         let first_stream = &streams[0];
-
-//         assert_eq!(streams.len(), 1);
-
-//         assert_eq!(first_stream.0, "retiro");
-//         assert_eq!(first_stream.1, 1);
-//         assert_eq!(first_stream.2.peer_addr().unwrap().port(), 1700);
-//     }
-// }
+        assert_eq!(first_stream.0, "retiro");
+        assert_eq!(first_stream.1, 1);
+        assert_eq!(first_stream.2, "localhost:1700");
+    }
+}

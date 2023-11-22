@@ -28,7 +28,7 @@ pub struct EcomOrder {
 }
 
 impl EcomOrder {
-    pub fn parse(&self) -> String {
+    pub fn as_string(&self) -> String {
         format!(
             "{},{},{},{}\n",
             self.id, self.product_id, self.quantity, self.zone_id
@@ -63,7 +63,7 @@ impl Ecom {
             None => return Err(FileError::WrongFormat),
         };
         let ecom_info: Vec<&str> = ecom_info_string.split(',').collect();
-        if ecom_info.len() != 2 {
+        if ecom_info.len() != 1 {
             return Err(FileError::WrongFormat);
         }
 
