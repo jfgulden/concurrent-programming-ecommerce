@@ -10,7 +10,7 @@ Repo for Concurrentes FIUBA
 Before compiling and running the program, we must create some files:
 
 ### Orders
-- an pedidos/[ecom_orders_file].txt for each ecom, which will contains all the online orders, with the following format:
+- an pedidos/[ecom_orders_filename].txt for each ecom, which will contains all the online orders, with the following format:
 
 ```
 <ecom_id>
@@ -34,7 +34,7 @@ An example of it is shown at pedidos/tienda1.txt
 
 ### Shops
 
-- A tiendas/[local_shop_file].txt for each shop, which will contains all the local stock, with the following format:
+- A tiendas/[local_shop_filename].txt for each shop, which will contains all the local stock, with the following format:
 
 ```
 <shop_zone_name>,<shop_address:port>,<shop_zone_id>
@@ -51,13 +51,13 @@ An example of it is shown at tiendas/tienda1.txt
 First, we should run the shop binary:
 
 ```
-cargo run --bin shop tienda[shop_zone_id]
+cargo run --bin shop [shop_filename]
 ```
 
 Then, we should run the ecom binary:
 
 ```
-cargo run --bin ecom[ecom_orders_file_number]
+cargo run --bin [ecom_orders_filename]
 ```
 
 If we do so, the shop will start listening for online orders while it processes local orders, and the ecom will be sending those online orders to the shop.
