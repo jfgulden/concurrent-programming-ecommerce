@@ -51,13 +51,13 @@ An example of it is shown at tiendas/tienda1.txt
 First, we should run the shop binary:
 
 ```
-cargo run --bin shop [local_shop_file]
+cargo run --bin shop tienda[shop_zone_id]
 ```
 
 Then, we should run the ecom binary:
 
 ```
-cargo run --bin ecom [ecom_orders_file]
+cargo run --bin ecom[ecom_orders_file_number]
 ```
 
 If we do so, the shop will start listening for online orders while it processes local orders, and the ecom will be sending those online orders to the shop.
