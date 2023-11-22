@@ -1,19 +1,27 @@
 use crate::ecom::process_order::ProcessOrder;
 use crate::error::FileError;
 use crate::error::PurchaseError;
+use crate::error::StreamError;
 use crate::states::OnlinePurchaseState;
 use actix::{Actor, AsyncContext, Context, Message, StreamHandler};
+use colored::Colorize;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
+use std::sync::Arc;
 use std::vec;
+use tokio::io::split;
+use tokio::io::AsyncBufReadExt;
+use tokio::net::TcpStream;
+use tokio::sync::Mutex;
+use tokio_stream::wrappers;
 
-use super::conneted_shops::ConnectedShop;
+use super::connected_shops::ConnectedShop;
 #[derive(Debug, Message, Clone)]
 #[rtype(result = "Result<(), PurchaseError>")]
 pub struct EcomOrder {
     pub id: u32,
-    pub product: String,
+    pub product_id: String,
     pub quantity: u32,
     pub zone_id: i32,
     pub shops_requested: Vec<i32>,
@@ -23,7 +31,7 @@ impl EcomOrder {
     pub fn parse(&self) -> String {
         format!(
             "{},{},{},{}\n",
-            self.id, self.product, self.quantity, self.zone_id
+            self.id, self.product_id, self.quantity, self.zone_id
         )
     }
 }
@@ -33,7 +41,7 @@ pub struct Ecom {
     pub name: String,
     pub address: String,
     pub pending_orders: HashMap<u32, EcomOrder>,
-    pub shops: Vec<ConnectedShop>, //Esto debería ser un HashMap<(lat, long) o zone_id, TcpStream>
+    pub shops: Vec<ConnectedShop>,
 }
 
 impl Ecom {
@@ -83,8 +91,7 @@ impl Ecom {
         // ignore dash line
         lines.next();
 
-        let mut line_number = 0;
-        for line in lines {
+        for (line_number, line) in lines.enumerate() {
             let current_line = line.map_err(|_| FileError::WrongFormat)?;
 
             let product_data: Vec<&str> = current_line.split(',').collect();
@@ -94,8 +101,8 @@ impl Ecom {
                 return Err(FileError::WrongFormat);
             }
             let ecom_order = EcomOrder {
-                id: line_number,
-                product: product_data[0].to_string(),
+                id: line_number as u32,
+                product_id: product_data[0].to_string(),
                 quantity: product_data[1]
                     .parse()
                     .map_err(|_| FileError::WrongFormat)?,
@@ -106,7 +113,6 @@ impl Ecom {
             };
 
             orders.push(ecom_order);
-            line_number += 1;
         }
 
         Ok(orders)
@@ -122,12 +128,41 @@ impl Ecom {
             }
         });
 
-        for shop in shops {
-            if !order.shops_requested.contains(&shop.zone_id) {
-                return Some(shop);
-            }
-        }
-        None
+        shops
+            .into_iter()
+            .find(|shop| !order.shops_requested.contains(&shop.zone_id))
+    }
+
+    pub fn connect_shop(
+        &mut self,
+        ctx: &mut Context<Ecom>,
+        name: String,
+        zone_id: i32,
+        address: String,
+    ) -> Result<(), StreamError> {
+        let stream_std = match std::net::TcpStream::connect(address) {
+            Ok(stream) => stream,
+            Err(_) => return Err(StreamError::CannotCall),
+        };
+
+        let stream = match TcpStream::from_std(stream_std) {
+            Ok(stream) => stream,
+            Err(_) => return Err(StreamError::CannotCall),
+        };
+
+        let (read, write_half) = split(stream);
+        Ecom::add_stream(
+            wrappers::LinesStream::new(tokio::io::BufReader::new(read).lines()),
+            ctx,
+        );
+
+        self.shops.push(ConnectedShop {
+            name,
+            zone_id,
+            stream: Arc::new(Mutex::new(write_half)),
+        });
+
+        Ok(())
     }
 }
 
@@ -158,11 +193,11 @@ impl StreamHandler<Result<String, std::io::Error>> for Ecom {
             };
 
             println!(
-                "[TIENDA {:?}] Pedido {}: {:<2}x {}",
-                order.shops_requested.last().unwrap_or(&0),
-                state.to_string(),
+                "{} Pedido {}: {:<2}x {}",
+                format!("[TIENDA {}]", order.shops_requested.last().unwrap_or(&-1)).blue(),
+                state.string_to_print(),
                 order.quantity,
-                order.product
+                order.product_id
             );
 
             match state {
@@ -174,9 +209,7 @@ impl StreamHandler<Result<String, std::io::Error>> for Ecom {
         }
     }
 
-    fn finished(&mut self, _ctx: &mut Self::Context) {
-        println!("[ECOM] [{:?}] Desconectado", self.address);
-    }
+    fn finished(&mut self, _ctx: &mut Self::Context) {}
 }
 
 #[cfg(test)]
@@ -232,28 +265,28 @@ mod tests {
 
         let order1 = EcomOrder {
             id: 1,
-            product: String::from("1"),
+            product_id: String::from("1"),
             quantity: 1,
             zone_id: 1,
             shops_requested: vec![],
         };
         let order4 = EcomOrder {
             id: 1,
-            product: String::from("1"),
+            product_id: String::from("1"),
             quantity: 1,
             zone_id: 4,
             shops_requested: vec![],
         };
         let order7 = EcomOrder {
             id: 1,
-            product: String::from("1"),
+            product_id: String::from("1"),
             quantity: 1,
             zone_id: 7,
             shops_requested: vec![],
         };
         let order15 = EcomOrder {
             id: 1,
-            product: String::from("1"),
+            product_id: String::from("1"),
             quantity: 1,
             zone_id: 15,
             shops_requested: vec![],

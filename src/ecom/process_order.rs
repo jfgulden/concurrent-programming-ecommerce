@@ -1,4 +1,5 @@
 use actix::{AsyncContext, Handler, Message};
+use colored::Colorize;
 
 use super::{
     ecom_actor::{Ecom, EcomOrder},
@@ -29,9 +30,16 @@ impl Handler<ProcessOrder> for Ecom {
             Some(shop) => shop,
             None => {
                 println!(
-                    "[ECOM] Pedido {:<2}x {} rechazado: No hay mas tiendas",
-                    order.quantity, order.product
+                    "{} Pedido {}: {:<2}x {} (No hay mas tiendas)",
+                    "[ECOM]".purple(),
+                    "CANCELADO".on_red(),
+                    order.quantity,
+                    order.product_id
                 );
+                // println!(
+                //     "[ECOM] Pedido {:<2}x {} rechazado: No hay mas tiendas",
+                //     order.quantity, order.product_id
+                // );
                 self.pending_orders.remove_entry(&msg.0.id);
                 return;
             }

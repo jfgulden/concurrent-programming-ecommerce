@@ -5,10 +5,11 @@ use actix::{
     dev::ContextFutureSpawner, fut::wrap_future, ActorFutureExt, AsyncContext, Handler, Message,
     ResponseActFuture, WrapFuture,
 };
+use colored::Colorize;
 use tokio::{io::AsyncWriteExt, time::sleep};
 
 use super::{
-    conneted_shops::ConnectedShop,
+    connected_shops::ConnectedShop,
     ecom_actor::{Ecom, EcomOrder},
 };
 
@@ -24,20 +25,26 @@ impl Handler<FowardOrder> for Ecom {
 
     fn handle(&mut self, msg: FowardOrder, ctx: &mut Self::Context) -> Self::Result {
         println!(
-            "[ECOM] Enviando pedido a tienda en [{:?}]: {:<2}x {}",
-            msg.shop.zone_id, msg.order.quantity, msg.order.product
+            "{} Enviando pedido a tienda en [{:?}]: {:<2}x {}",
+            "[ECOM]".purple(),
+            msg.shop.zone_id,
+            msg.order.quantity,
+            msg.order.product_id
         );
 
         let message = msg.order.parse();
 
-        let write_mutex = msg.shop.stream.clone();
         wrap_future::<_, Self>(async move {
-            let mut write = write_mutex.lock().await;
-            if let Err(e) = write.write_all(message.as_bytes()).await {
-                println!("[ECOM] Error al enviar pedido a tienda: {:?}", e);
-            }
+            let mut write = msg.shop.stream.lock().await;
+            if write.write_all(message.as_bytes()).await.is_err() {
+                println!(
+                    "{} No se pudo enviar el pedido a la tienda en [{:?}]",
+                    "[ECOM]".purple(),
+                    msg.shop.zone_id
+                );
+            };
         })
-        .spawn(ctx);
+        .wait(ctx);
 
         // timeout de perdida de pedido
         // solo se reenvia a otro si:
@@ -52,16 +59,11 @@ impl Handler<FowardOrder> for Ecom {
                         Some(order) => order,
                         None => return, // no es mas pendiente, ya se entrego o fue cancelada por no haber mas tiendas
                     };
-                    let last_shop_requested = match order.shops_requested.last() {
-                        Some(last) => last,
-                        None => return, // no se mando a ninguna tienda, no se reenvia
-                    };
-                    if msg.shop.zone_id == last_shop_requested.clone() {
-                        println!("[ECOM] PERDIDO  {}x {}", order.quantity, order.product);
+
+                    if msg.shop.zone_id == *order.shops_requested.last().unwrap_or(&-1) {
+                        println!("[ECOM] PERDIDO  {}x {}", order.quantity, order.product_id);
                         ctx.address().do_send(ProcessOrder(order.clone()));
                     } // caso contrario, sigue pendiente pero ya fue enviada a otra tienda
-
-                    return;
                 }),
         );
     }

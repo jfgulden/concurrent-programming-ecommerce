@@ -1,53 +1,21 @@
 use actix_rt::System;
 use concurrentes::error::FileError;
-use concurrentes::shop::online_purchase::OnlinePurchase;
 use concurrentes::shop::process_local_orders::ProcessLocalOrders;
 use concurrentes::shop::shop_actor::Shop;
+use concurrentes::shop::shop_server_side::ShopServerSide;
 use futures::TryFutureExt;
 use std::env;
 use std::io::{stdin, stdout, Write};
-use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::io::{split, AsyncBufReadExt, BufReader, WriteHalf};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::io::{split, AsyncBufReadExt, BufReader};
+use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tokio_stream::wrappers;
 extern crate actix;
-use actix::{Actor, ActorContext, Context, StreamHandler};
+use actix::{Actor, StreamHandler};
 use std::path::Path;
 
 const CANT_ARGS: usize = 2;
-
-struct ShopSideServer {
-    write: Arc<Mutex<WriteHalf<TcpStream>>>,
-    addr: SocketAddr,
-    shop_addr: actix::Addr<Shop>, //Lo vamos a usar para mandar msg al actor
-}
-
-impl Actor for ShopSideServer {
-    type Context = Context<Self>;
-}
-
-impl StreamHandler<Result<String, std::io::Error>> for ShopSideServer {
-    fn handle(&mut self, read: Result<String, std::io::Error>, _ctx: &mut Self::Context) {
-        if let Ok(line) = read {
-            println!("[ECOM] Pedido recibido desde [{:?}]: {:?}", self.addr, line);
-
-            let order = line.split(',').collect::<Vec<&str>>();
-            let purchase = match OnlinePurchase::parse(order, self.write.clone()) {
-                Ok(purchase) => purchase,
-                Err(_) => return,
-            };
-
-            self.shop_addr.do_send(purchase);
-        }
-    }
-
-    fn finished(&mut self, ctx: &mut Self::Context) {
-        println!("[ECOM] [{:?}] Desconectado", self.addr);
-        ctx.stop();
-    }
-}
 
 async fn initiate_shop_side_server(
     shop: &actix::Addr<Shop>,
@@ -59,15 +27,16 @@ async fn initiate_shop_side_server(
 
     while let Ok((stream, addr)) = listener.accept().await {
         println!("[ECOM] Se conectó el Ecommerce {:?}", addr);
-        ShopSideServer::create(|ctx| {
+        ShopServerSide::create(|ctx| {
             let (read, write_half) = split(stream);
-            ShopSideServer::add_stream(
+            ShopServerSide::add_stream(
                 wrappers::LinesStream::new(BufReader::new(read).lines()),
                 ctx,
             );
 
             let write = Arc::new(Mutex::new(write_half));
-            ShopSideServer {
+
+            ShopServerSide {
                 addr,
                 write,
                 shop_addr: shop.clone(),
@@ -77,6 +46,7 @@ async fn initiate_shop_side_server(
 
     Ok(())
 }
+
 fn main() {
     let system = System::new();
 
@@ -110,19 +80,17 @@ fn main() {
         enter_to_start();
 
         let address = shop.address.clone();
-        let shop_actor = shop.start();
+        let shop = shop.start();
 
-        if let Err(err) = shop_actor.send(ProcessLocalOrders(orders)).await {
+        if let Err(err) = shop.send(ProcessLocalOrders(orders)).await {
             println!("ERROR: {:?}", err);
             System::current().stop();
             return;
         };
-        if let Err(err) = initiate_shop_side_server(&shop_actor, address).await {
+        if let Err(err) = initiate_shop_side_server(&shop, address).await {
             println!("ERROR: {:?}", err);
-            System::current().stop();
-            return;
+            System::current().stop()
         };
-        // server_fut.await;
     });
     if system.run().is_err() {
         println!("ERROR: system error");

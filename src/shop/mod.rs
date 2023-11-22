@@ -3,3 +3,4 @@ pub mod local_purchase;
 pub mod online_purchase;
 pub mod process_local_orders;
 pub mod shop_actor;
+pub mod shop_server_side;

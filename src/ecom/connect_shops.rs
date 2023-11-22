@@ -1,15 +1,9 @@
-use std::sync::Arc;
-
-use actix::{Context, Handler, Message, StreamHandler};
-use tokio::{
-    io::{split, AsyncBufReadExt},
-    sync::Mutex,
-};
-use tokio_stream::wrappers;
+use actix::{Context, Handler, Message};
+use colored::Colorize;
 
 use crate::error::StreamError;
 
-use super::{conneted_shops::ConnectedShop, ecom_actor::Ecom};
+use super::{connected_shops::ConnectedShop, ecom_actor::Ecom};
 
 #[derive(Debug, Message)]
 #[rtype(result = "Result<(), StreamError>")]
@@ -22,17 +16,15 @@ impl Handler<ConnectShops> for Ecom {
         let streams = ConnectedShop::from_file("tiendas").map_err(|_| StreamError::CannotCall)?;
 
         for (name, zone_id, stream) in streams.into_iter() {
-            let (read, write_half) = split(stream);
-            Ecom::add_stream(
-                wrappers::LinesStream::new(tokio::io::BufReader::new(read).lines()),
-                ctx,
-            );
-
-            self.shops.push(ConnectedShop {
-                name,
-                zone_id,
-                stream: Arc::new(Mutex::new(write_half)),
-            });
+            if self.connect_shop(ctx, name, zone_id, stream).is_err() {
+                println!(
+                    "{} Error al conectar la tienda {}",
+                    "[ECOM]".purple(),
+                    zone_id
+                );
+            } else {
+                println!("{} Tienda {} conectada", "[ECOM]".purple(), zone_id);
+            };
         }
 
         Ok(())

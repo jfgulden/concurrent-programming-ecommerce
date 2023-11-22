@@ -26,22 +26,18 @@ impl Handler<DeliverPurchase> for Shop {
                 .into_actor(self)
                 .map(move |_msg, shop, ctx| {
                     msg.purchase.state.deliver_attempt();
-                    msg.purchase.print_status();
 
                     let product = shop.stock.iter_mut().find(|p| p.id == msg.purchase.product);
 
-                    if msg.purchase.state == OnlinePurchaseState::DELIVERED {
-                        if let Some(product) = product {
-                            product.reserved -= msg.purchase.quantity;
-                        }
-
-                        msg.purchase.send_msg(ctx);
-                    } else {
-                        if let Some(product) = product {
-                            product.reserved -= msg.purchase.quantity;
+                    if let Some(product) = product {
+                        product.reserved -= msg.purchase.quantity;
+                        if msg.purchase.state == OnlinePurchaseState::LOST {
                             product.stock += msg.purchase.quantity;
                         }
                     }
+
+                    msg.purchase.print_status();
+                    msg.purchase.send_msg(ctx);
                 }),
         )
     }

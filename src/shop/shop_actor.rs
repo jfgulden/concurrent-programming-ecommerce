@@ -13,7 +13,6 @@ pub struct Product {
     pub reserved: u32,
 }
 
-#[derive(Debug)]
 pub struct Shop {
     pub name: String,
     pub address: String,

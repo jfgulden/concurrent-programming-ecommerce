@@ -16,6 +16,7 @@ use super::{deliver_purchase::DeliverPurchase, shop_actor::Shop};
 #[rtype(result = "Result<OnlinePurchaseState, ()>")]
 pub struct OnlinePurchase {
     pub id: u8,
+    pub ecom: String,
     pub product: String,
     pub quantity: u32,
     pub zone_id: u8,
@@ -62,6 +63,7 @@ impl Handler<OnlinePurchase> for Shop {
 impl OnlinePurchase {
     pub fn parse(
         line: Vec<&str>,
+        ecom: String,
         write_half: Arc<Mutex<WriteHalf<TcpStream>>>,
     ) -> Result<OnlinePurchase, StreamError> {
         let id = line[0]
@@ -78,18 +80,20 @@ impl OnlinePurchase {
 
         Ok(OnlinePurchase {
             id,
+            ecom,
             product,
             quantity,
             zone_id,
             write: write_half,
-            state: OnlinePurchaseState::CREATED,
+            state: OnlinePurchaseState::RECEIVED,
         })
     }
 
     pub fn print_status(&self) {
         println!(
-            "[ECOM]  {} {:>2} x {}",
-            self.state.to_string(),
+            "[ECOM {}]  {} {:>2} x {}",
+            self.ecom,
+            self.state.string_to_print(),
             self.quantity,
             self.product
         );
@@ -99,8 +103,8 @@ impl OnlinePurchase {
         wrap_future::<_, Shop>(async move {
             let mut write = self.write.lock().await;
             let msg = format!("{},{}\n", self.id, self.state.to_int());
-            if let Err(e) = write.write_all(msg.as_bytes()).await {
-                println!("Error al enviar mensaje: {}", e);
+            if write.write_all(msg.as_bytes()).await.is_err() {
+                println!("Error al enviar mensaje");
             }
         })
         .wait(ctx);
@@ -119,7 +123,7 @@ mod tests {
     async fn test_parsing_online_purchase() {
         let order = EcomOrder {
             id: 1,
-            product: String::from("manzana"),
+            product_id: String::from("manzana"),
             quantity: 1,
             zone_id: 1,
             shops_requested: Vec::new(),
@@ -135,9 +139,11 @@ mod tests {
         let (_read, write) = split(tokio_stream);
         line.truncate(line.len() - 1);
         let message = line.split(',').collect::<Vec<&str>>();
-        let purchase = OnlinePurchase::parse(message, Arc::new(Mutex::new(write))).unwrap();
+        let purchase =
+            OnlinePurchase::parse(message, "2".to_string(), Arc::new(Mutex::new(write))).unwrap();
         assert_eq!(order.id, purchase.id.into());
-        assert_eq!(order.product, purchase.product);
+        assert_eq!(order.product_id, purchase.product);
+        assert_eq!("2".to_string(), purchase.ecom);
         assert_eq!(order.quantity, purchase.quantity);
         assert_eq!(order.zone_id, purchase.zone_id.into());
     }
@@ -167,11 +173,12 @@ mod tests {
 
         let order = OnlinePurchase {
             id: 1,
+            ecom: "1".to_string(),
             zone_id: 1,
             write: Arc::new(Mutex::new(write)),
             product: "A".to_string(),
             quantity: 1,
-            state: OnlinePurchaseState::CREATED,
+            state: OnlinePurchaseState::RECEIVED,
         };
 
         let result = shop.send(order).await.unwrap();
@@ -205,10 +212,11 @@ mod tests {
         let order = OnlinePurchase {
             id: 1,
             zone_id: 1,
+            ecom: "1".to_string(),
             write: Arc::new(Mutex::new(write)),
             product: "A".to_string(),
             quantity: 11,
-            state: OnlinePurchaseState::CREATED,
+            state: OnlinePurchaseState::RECEIVED,
         };
 
         let result = shop.send(order).await.unwrap();
@@ -242,10 +250,11 @@ mod tests {
         let order = OnlinePurchase {
             id: 1,
             zone_id: 1,
+            ecom: "1".to_string(),
             write: Arc::new(Mutex::new(write)),
             product: "B".to_string(),
             quantity: 1,
-            state: OnlinePurchaseState::CREATED,
+            state: OnlinePurchaseState::RECEIVED,
         };
 
         let result = shop.send(order).await.unwrap();
@@ -280,10 +289,11 @@ mod tests {
         let order = OnlinePurchase {
             id: 1,
             zone_id: 1,
+            ecom: "1".to_string(),
             write: write.clone(),
             product: "A".to_string(),
             quantity: 4,
-            state: OnlinePurchaseState::CREATED,
+            state: OnlinePurchaseState::RECEIVED,
         };
 
         let result = shop.send(order).await.unwrap();
@@ -292,10 +302,11 @@ mod tests {
         let order2 = OnlinePurchase {
             id: 1,
             zone_id: 1,
+            ecom: "1".to_string(),
             write: write.clone(),
             product: "A".to_string(),
             quantity: 4,
-            state: OnlinePurchaseState::CREATED,
+            state: OnlinePurchaseState::RECEIVED,
         };
 
         let result = shop.send(order2).await.unwrap();
@@ -304,10 +315,11 @@ mod tests {
         let order3 = OnlinePurchase {
             id: 1,
             zone_id: 1,
+            ecom: "1".to_string(),
             write: write.clone(),
             product: "A".to_string(),
             quantity: 4,
-            state: OnlinePurchaseState::CREATED,
+            state: OnlinePurchaseState::RECEIVED,
         };
 
         let result = shop.send(order3).await.unwrap();
