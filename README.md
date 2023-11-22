@@ -10,6 +10,7 @@ Repo for Concurrentes FIUBA
 Before compiling and running the program, we must create some files:
 
 ### Orders
+
 - an pedidos/[ecom_orders_filename].txt for each ecom, which will contains all the online orders, with the following format:
 
 ```
@@ -20,9 +21,10 @@ Before compiling and running the program, we must create some files:
 ...
 <orderN_product_name>,<quantity>,<purchase_zone>
 ```
+
 An example of it is shown at pedidos/ecom1.txt
 
-- A pedidos/[local_orders_filename].txt for each shop, which will contains all the local orders, with the following format:
+- A pedidos/[shop_filename].txt for each shop, which will contains all the local orders, with the following format:
 
 ```
 <order1_product_name>,<quantity>
@@ -30,11 +32,12 @@ An example of it is shown at pedidos/ecom1.txt
 ...
 <orderN_product_name>,<quantity>
 ```
+
 An example of it is shown at pedidos/tienda1.txt
 
 ### Shops
 
-- A tiendas/[local_shop_filename].txt for each shop, which will contains all the local stock, with the following format:
+- A tiendas/[shop_filename].txt for each shop, which will contains all the local stock, with the following format:
 
 ```
 <shop_zone_name>,<shop_address:port>,<shop_zone_id>
@@ -44,6 +47,7 @@ An example of it is shown at pedidos/tienda1.txt
 ...
 <stockN_product_name>,<quantity>
 ```
+
 An example of it is shown at tiendas/tienda1.txt
 
 ## Compile and run
@@ -52,12 +56,16 @@ First, we should run the shop binary:
 
 ```
 cargo run --bin shop [shop_filename]
+
+example: cargo run --bin shop tienda1
 ```
 
 Then, we should run the ecom binary:
 
 ```
-cargo run --bin [ecom_orders_filename]
+cargo run --bin ecom [ecom_orders_filename]
+
+example: cargo run --bin ecom ecom1
 ```
 
 If we do so, the shop will start listening for online orders while it processes local orders, and the ecom will be sending those online orders to the shop.
@@ -69,7 +77,7 @@ We can disconnect shops from the ecom by pressing 's[shop_zone_id]', and pressin
 We can try to reconnect to a shop from the ecom by pressing 'r[shop_zone_id]', and pressing the enter key.
 
 For example:
-    
+
     ``` s1 ```
     Disconnects shop 1 from the ecom
     ``` r1 ```
