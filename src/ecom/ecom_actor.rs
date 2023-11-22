@@ -1,16 +1,22 @@
 use crate::ecom::process_order::ProcessOrder;
 use crate::error::FileError;
 use crate::error::PurchaseError;
+use crate::error::StreamError;
 use crate::states::OnlinePurchaseState;
-use actix::dev::ContextFutureSpawner;
-use actix::fut::wrap_future;
 use actix::{Actor, AsyncContext, Context, Message, StreamHandler};
+use colored::Colorize;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
+use std::sync::Arc;
 use std::vec;
+use tokio::io::split;
+use tokio::io::AsyncBufReadExt;
+use tokio::net::TcpStream;
+use tokio::sync::Mutex;
+use tokio_stream::wrappers;
 
-use super::conneted_shops::ConnectedShop;
+use super::connected_shops::ConnectedShop;
 #[derive(Debug, Message, Clone)]
 #[rtype(result = "Result<(), PurchaseError>")]
 pub struct EcomOrder {
@@ -26,7 +32,7 @@ pub struct Ecom {
     pub name: String,
     pub address: String,
     pub pending_orders: HashMap<u32, EcomOrder>,
-    pub shops: Vec<ConnectedShop>, //Esto debería ser un HashMap<(lat, long) o zone_id, TcpStream>
+    pub shops: Vec<ConnectedShop>,
 }
 
 impl Ecom {
@@ -122,6 +128,38 @@ impl Ecom {
         }
         None
     }
+
+    pub fn connect_shop(
+        &mut self,
+        ctx: &mut Context<Ecom>,
+        name: String,
+        zone_id: i32,
+        address: String,
+    ) -> Result<(), StreamError> {
+        let stream_std = match std::net::TcpStream::connect(address) {
+            Ok(stream) => stream,
+            Err(_) => return Err(StreamError::CannotCall),
+        };
+
+        let stream = match TcpStream::from_std(stream_std) {
+            Ok(stream) => stream,
+            Err(_) => return Err(StreamError::CannotCall),
+        };
+
+        let (read, write_half) = split(stream);
+        Ecom::add_stream(
+            wrappers::LinesStream::new(tokio::io::BufReader::new(read).lines()),
+            ctx,
+        );
+
+        self.shops.push(ConnectedShop {
+            name,
+            zone_id,
+            stream: Arc::new(Mutex::new(write_half)),
+        });
+
+        Ok(())
+    }
 }
 
 impl Actor for Ecom {
@@ -151,8 +189,8 @@ impl StreamHandler<Result<String, std::io::Error>> for Ecom {
             };
 
             println!(
-                "[TIENDA {:?}] Pedido {}: {:<2}x {}",
-                order.shops_requested.last().unwrap_or(&0),
+                "{} Pedido {}: {:<2}x {}",
+                format!("[TIENDA {}]", order.shops_requested.last().unwrap_or(&-1)).blue(),
                 state.to_string(),
                 order.quantity,
                 order.product_id
@@ -167,7 +205,5 @@ impl StreamHandler<Result<String, std::io::Error>> for Ecom {
         }
     }
 
-    fn finished(&mut self, _ctx: &mut Self::Context) {
-        println!("[ECOM] [{:?}] Desconectado", self.address);
-    }
+    fn finished(&mut self, _ctx: &mut Self::Context) {}
 }

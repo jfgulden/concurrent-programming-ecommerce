@@ -13,6 +13,7 @@ rand = "0.8.5"
 tokio = "1.34.0"
 tokio-stream = { version = "^0.1.14", features = ["io-util"] }
 futures = "0.3.28"
+colored = "2.0.4"
 
 [[bin]]
 name = "shop"
@@ -22,7 +23,4 @@ src = "src/shop.rs"
 name = "ecom"
 src = "src/ecom.rs"
 
-[[bin]]
-name = "test"
-src = "src/test.rs"
 

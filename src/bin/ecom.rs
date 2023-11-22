@@ -1,5 +1,6 @@
 use actix::{Actor, System};
 use concurrentes::ecom::connect_shops::ConnectShops;
+use concurrentes::ecom::connection_handling::connection_handling;
 use concurrentes::ecom::ecom_actor::Ecom;
 use concurrentes::ecom::process_ecom_orders::ProcessEcomOrders;
 use concurrentes::error::FileError;
@@ -28,15 +29,17 @@ fn main() {
                 return;
             }
         };
-        let ecom_actor = ecom.start();
+        let ecom = ecom.start();
 
         start_on_enter();
 
-        if let Err(error) = ecom_actor.send(ConnectShops).await {
+        if let Err(error) = ecom.send(ConnectShops).await {
             println!("ERROR conectando shops: {:?}", error);
             System::current().stop();
             return;
         };
+
+        connection_handling(ecom.clone());
 
         let orders = match Ecom::orders_from_file(args[1].as_str()) {
             Ok(orders) => orders,
@@ -47,7 +50,7 @@ fn main() {
             }
         };
 
-        if let Err(error) = ecom_actor.send(ProcessEcomOrders(orders)).await {
+        if let Err(error) = ecom.send(ProcessEcomOrders(orders)).await {
             println!("ERROR procesando ordenes: {:?}", error);
             System::current().stop();
             return;

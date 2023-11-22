@@ -5,10 +5,11 @@ use actix::{
     dev::ContextFutureSpawner, fut::wrap_future, ActorFutureExt, AsyncContext, Handler, Message,
     ResponseActFuture, WrapFuture,
 };
+use colored::Colorize;
 use tokio::{io::AsyncWriteExt, time::sleep};
 
 use super::{
-    conneted_shops::ConnectedShop,
+    connected_shops::ConnectedShop,
     ecom_actor::{Ecom, EcomOrder},
 };
 
@@ -24,8 +25,11 @@ impl Handler<FowardOrder> for Ecom {
 
     fn handle(&mut self, msg: FowardOrder, ctx: &mut Self::Context) -> Self::Result {
         println!(
-            "[ECOM] Enviando pedido a tienda en [{:?}]: {:<2}x {}",
-            msg.shop.zone_id, msg.order.quantity, msg.order.product_id
+            "{} Enviando pedido a tienda en [{:?}]: {:<2}x {}",
+            "[ECOM]".purple(),
+            msg.shop.zone_id,
+            msg.order.quantity,
+            msg.order.product_id
         );
 
         let message = format!(
@@ -33,14 +37,11 @@ impl Handler<FowardOrder> for Ecom {
             msg.order.id, msg.order.product_id, msg.order.quantity, msg.order.zone_id
         );
 
-        // QUE ESTO RECORRA UN VECTOR DESDE IDEAL A MENOS IDEAL
-        let write_mutex = msg.shop.stream.clone().unwrap();
         wrap_future::<_, Self>(async move {
-            let mut write = write_mutex.lock().await;
+            let mut write = msg.shop.stream.lock().await;
             let _bytes = write.write_all(message.as_bytes()).await.unwrap();
         })
-        .spawn(ctx);
-        // SI HUBO "EXITO" RECIEN ACA INSERTAR EN SHOPS_REQUESTED, (NO EN PROCESS ORDER) (unwrap)
+        .wait(ctx);
 
         // timeout de perdida de pedido
         // solo se reenvia a otro si:

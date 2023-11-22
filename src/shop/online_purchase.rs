@@ -16,6 +16,7 @@ use super::{deliver_purchase::DeliverPurchase, shop_actor::Shop};
 #[rtype(result = "()")]
 pub struct OnlinePurchase {
     pub id: u8,
+    pub ecom: String,
     pub product: String,
     pub quantity: u32,
     pub zone_id: u8,
@@ -59,6 +60,7 @@ impl Handler<OnlinePurchase> for Shop {
 impl OnlinePurchase {
     pub fn parse(
         line: Vec<&str>,
+        ecom: String,
         write_half: Arc<Mutex<WriteHalf<TcpStream>>>,
     ) -> Result<OnlinePurchase, StreamError> {
         let id = line[0]
@@ -74,17 +76,19 @@ impl OnlinePurchase {
 
         Ok(OnlinePurchase {
             id,
+            ecom,
             product: product_id,
             quantity,
             zone_id,
             write: write_half,
-            state: OnlinePurchaseState::CREATED,
+            state: OnlinePurchaseState::RECEIVED,
         })
     }
 
     pub fn print_status(&self) {
         println!(
-            "[ECOM]  {} {:>2} x {}",
+            "[ECOM {}]  {} {:>2} x {}",
+            self.ecom,
             self.state.to_string(),
             self.quantity,
             self.product
