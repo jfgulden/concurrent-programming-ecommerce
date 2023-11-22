@@ -21,6 +21,7 @@ pub struct Shop {
 }
 
 impl Shop {
+    /// Reads the shop info from the file in the given path
     pub fn from_file(path: &str) -> Result<Self, FileError> {
         let file = File::open(path).map_err(|_| FileError::NotFound)?;
         let shop = Self::from_reader(file)?;
@@ -37,6 +38,7 @@ impl Shop {
         Ok(shop)
     }
 
+    /// Reads the shop info from the given reader
     fn from_reader<T: Read>(content: T) -> Result<Shop, FileError> {
         let reader = BufReader::new(content);
 
@@ -85,6 +87,7 @@ impl Shop {
         Ok(shop)
     }
 
+    /// Reads the orders from the file in the given path
     pub fn orders_from_file(path: &str) -> Result<Vec<LocalPurchase>, FileError> {
         let file = File::open(path).map_err(|_| FileError::NotFound)?;
         let reader = BufReader::new(file);

@@ -22,6 +22,8 @@ impl Actor for ShopServerSide {
 }
 
 impl StreamHandler<Result<String, std::io::Error>> for ShopServerSide {
+    /// Handles the messages received from the ecom and sends them to the shop actor
+    /// to be processed as an order
     fn handle(&mut self, read: Result<String, std::io::Error>, _ctx: &mut Self::Context) {
         let ecom = self.addr.port().to_string();
         if let Ok(line) = read {
@@ -35,12 +37,15 @@ impl StreamHandler<Result<String, std::io::Error>> for ShopServerSide {
         }
     }
 
+    /// Handles the disconnection of the ecom
     fn finished(&mut self, ctx: &mut Self::Context) {
         println!("[ECOM {:?}] Desconectado", self.addr.port());
         ctx.stop();
     }
 }
 
+/// Creates a server that listens for connections from the ecommerce and sends the messages to the
+/// shop server side actor, which will process them and send them to the shop actor
 pub async fn initiate_shop_server_side(
     shop_recipient: Recipient<OnlinePurchase>,
     address: String,

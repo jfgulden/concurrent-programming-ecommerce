@@ -15,6 +15,8 @@ pub struct ProcessLocalOrders(pub Vec<LocalPurchase>);
 impl Handler<ProcessLocalOrders> for Shop {
     type Result = ();
 
+    /// Processes the given orders one by one recursively, sending them as messages to the shop
+    /// to be processed
     fn handle(&mut self, mut msg: ProcessLocalOrders, ctx: &mut Self::Context) -> Self::Result {
         let next_order = match msg.0.first() {
             Some(order) => order.clone(),

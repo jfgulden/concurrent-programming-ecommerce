@@ -60,6 +60,7 @@ fn main() {
     }
 }
 
+/// Gets the path from the ecom file from the command line arguments
 fn get_args() -> Result<String, FileError> {
     let args: Vec<String> = env::args().collect();
     if args.len() < CANT_ARGS {
@@ -76,6 +77,7 @@ fn get_args() -> Result<String, FileError> {
     Ok(path)
 }
 
+/// Waits for the user to press enter to start the program
 fn start_on_enter() {
     println!("Presione enter para comenzar");
     let _ = stdout().flush();

@@ -44,6 +44,7 @@ pub struct Ecom {
 }
 
 impl Ecom {
+    /// Reads the ecom info from the file in the given path
     pub fn from_file(path: &str) -> Result<Self, FileError> {
         let file = File::open(path).map_err(|_| FileError::NotFound)?;
         let ecom = Self::from_reader(file)?;
@@ -53,6 +54,7 @@ impl Ecom {
         Ok(ecom)
     }
 
+    /// Reads the ecom info from the given reader
     fn from_reader<T: Read>(content: T) -> Result<Self, FileError> {
         let reader = BufReader::new(content);
 
@@ -76,6 +78,7 @@ impl Ecom {
         Ok(ecom)
     }
 
+    /// Reads the orders from the file in the given path
     pub fn orders_from_file(path: &str) -> Result<Vec<EcomOrder>, FileError> {
         let file = File::open(path).map_err(|_| FileError::NotFound)?;
         let reader = BufReader::new(file);
@@ -115,6 +118,7 @@ impl Ecom {
         Ok(orders)
     }
 
+    /// Returns the next shop, if any, to deliver the order or None if there are no more shops available.
     pub fn find_delivery_shop(&self, order: &EcomOrder) -> Option<ConnectedShop> {
         let mut shops = self.shops.clone();
         shops.sort_by(|a, b| {
@@ -130,6 +134,7 @@ impl Ecom {
             .find(|shop| !order.shops_requested.contains(&shop.zone_id))
     }
 
+    /// Tries to stablish a connection with the shop with the given zone id
     pub fn connect_shop(
         &mut self,
         ctx: &mut Context<Ecom>,
@@ -168,6 +173,9 @@ impl Actor for Ecom {
 }
 
 impl StreamHandler<Result<String, std::io::Error>> for Ecom {
+    /// Handles the messages received from the shops for each order
+    /// If the order is DELIVERED, it removes it from the pending orders
+    /// If the order is not DELIVERED, it sends a ProcessOrder message to the ecom
     fn handle(&mut self, read: Result<String, std::io::Error>, ctx: &mut Self::Context) {
         if let Ok(line) = read {
             let order_str = line.split(',').collect::<Vec<&str>>();

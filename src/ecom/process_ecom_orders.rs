@@ -17,6 +17,8 @@ pub struct ProcessEcomOrders(pub Vec<EcomOrder>);
 impl Handler<ProcessEcomOrders> for Ecom {
     type Result = ();
 
+    /// Processes the given orders one by one recursively, sending them as messages to the ecom
+    /// to be sent to the shops
     fn handle(&mut self, mut msg: ProcessEcomOrders, ctx: &mut Self::Context) -> Self::Result {
         let next_order = match msg.0.first() {
             Some(order) => order.clone(),

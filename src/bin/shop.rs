@@ -61,6 +61,7 @@ fn main() {
     }
 }
 
+/// Gets the path from the shop files from the command line arguments
 fn get_args() -> Result<(String, String), FileError> {
     let args: Vec<String> = env::args().collect();
 
@@ -82,6 +83,7 @@ fn get_args() -> Result<(String, String), FileError> {
     Ok((path_shop, path_orders))
 }
 
+/// Waits for the user to press enter to start the program
 fn enter_to_start() {
     let _ = stdout().flush();
     let mut input = String::new();

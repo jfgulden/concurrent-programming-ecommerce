@@ -27,6 +27,9 @@ impl LocalPurchase {
 impl Handler<LocalPurchase> for Shop {
     type Result = Result<LocalPurchaseState, PurchaseError>;
 
+    /// Processes the given local purchase:
+    /// - If the product is in stock, the purchase gets SOLD and the product is removed from the stock.
+    /// - If the product is not in stock, the purchase gets REJECTED.
     fn handle(&mut self, mut msg: LocalPurchase, _ctx: &mut Context<Self>) -> Self::Result {
         thread::sleep(Duration::from_millis(PURCHASE_MILLIS));
 

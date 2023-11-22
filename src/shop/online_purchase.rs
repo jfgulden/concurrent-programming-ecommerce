@@ -27,6 +27,11 @@ pub struct OnlinePurchase {
 impl Handler<OnlinePurchase> for Shop {
     type Result = Result<OnlinePurchaseState, ()>;
 
+    /// Processes the given online purchase:
+    /// - If the product is in stock, the purchase status gets set as RESERVED and it is sent
+    /// as a message to be delivered to the ecommerce.
+    /// - If the product is not in stock, the purchase status gets set as REJECTED and it is
+    /// sent to the ecommerce.
     fn handle(&mut self, mut msg: OnlinePurchase, ctx: &mut Context<Self>) -> Self::Result {
         thread::sleep(Duration::from_millis(PURCHASE_MILLIS));
         let product = self.stock.iter_mut().find(|p| p.id == msg.product);
@@ -61,6 +66,7 @@ impl Handler<OnlinePurchase> for Shop {
 }
 
 impl OnlinePurchase {
+    /// Parses the given line into an OnlinePurchase
     pub fn parse(
         line: Vec<&str>,
         ecom: String,
@@ -99,6 +105,7 @@ impl OnlinePurchase {
         );
     }
 
+    /// Sends the message with format "{purchase_id},{purchase_status}\n" to the ecommerce
     pub fn send_msg(self, ctx: &mut Context<Shop>) {
         wrap_future::<_, Shop>(async move {
             let mut write = self.write.lock().await;

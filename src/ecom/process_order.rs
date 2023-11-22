@@ -13,6 +13,8 @@ pub struct ProcessOrder(pub EcomOrder);
 impl Handler<ProcessOrder> for Ecom {
     type Result = ();
 
+    /// Processes the given order, sending it to the shop which zone id is the closest to the
+    /// order's zone id and has not been requested yet.
     fn handle(&mut self, msg: ProcessOrder, ctx: &mut Self::Context) -> Self::Result {
         let order = match self.pending_orders.get(&msg.0.id) {
             Some(order) => order,
