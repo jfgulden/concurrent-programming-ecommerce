@@ -39,7 +39,6 @@ impl EcomOrder {
 #[derive(Debug)]
 pub struct Ecom {
     pub name: String,
-    pub address: String,
     pub pending_orders: HashMap<u32, EcomOrder>,
     pub shops: Vec<ConnectedShop>,
 }
@@ -50,7 +49,6 @@ impl Ecom {
         let ecom = Self::from_reader(file)?;
         println!("===");
         println!("Nombre:  {}", ecom.name);
-        println!("Servidor:  {}", ecom.address);
         println!("===\n");
         Ok(ecom)
     }
@@ -71,7 +69,6 @@ impl Ecom {
 
         let ecom = Self {
             name: ecom_info[0].to_string(),
-            address: ecom_info[1].to_string(),
             pending_orders: HashMap::new(),
             shops: Vec::new(),
         };
@@ -258,7 +255,6 @@ mod tests {
         ];
         let ecom = Ecom {
             name: String::from("ecom"),
-            address: String::from("localhost:123"),
             pending_orders: HashMap::new(),
             shops: conneted_shops,
         };

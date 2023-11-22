@@ -13,7 +13,7 @@ Before compiling and running the program, we must create some files:
 - an pedidos/[ecom_orders_file].txt for each ecom, which will contains all the online orders, with the following format:
 
 ```
-<ecom_id>,<ecom_address:port>
+<ecom_id>
 ----------------------
 <order1_product_name>,<quantity>,<purchase_zone>
 <order2_product_name>,<quantity>,<purchase_zone>

@@ -1,4 +1,4 @@
-ecom1,localhost:123
+ecom1
 ----------------------
 manzana,2,1
 banana,2,1
