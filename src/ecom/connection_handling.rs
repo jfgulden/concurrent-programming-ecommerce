@@ -106,9 +106,15 @@ impl Handler<Reconnect> for Ecom {
                 .connect_shop(ctx, name.clone(), zone_id, stream)
                 .is_ok()
             {
-                println!("{} Tienda {} reconectada", "[ECOM]".purple(), zone_id);
+                println!(
+                    "{}",
+                    format!("[ECOM] Tienda {} reconectada", zone_id).purple()
+                );
             } else {
-                println!("Error al reconectar la tienda {}", zone_id);
+                println!(
+                    "{}",
+                    format!("Error al reconectar la tienda {}", zone_id).purple()
+                );
             }
         } else {
             println!("No se encontro la tienda {}", zone_id);

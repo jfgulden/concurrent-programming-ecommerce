@@ -23,7 +23,10 @@ impl Handler<ConnectShops> for Ecom {
                     zone_id
                 );
             } else {
-                println!("{} Tienda {} conectada", "[ECOM]".purple(), zone_id);
+                println!(
+                    "{}",
+                    format!("{} Tienda {} conectada", "[ECOM]".purple(), zone_id).purple()
+                );
             };
         }
 

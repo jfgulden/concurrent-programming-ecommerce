@@ -1,8 +1,16 @@
 retiro,localhost:2346,1
 ----------------------
 manzana,100
+guante,240
 banana,200
 coca,100
 galleta,50
+gorro,500
 huevo,240
+remera,5000
 pelota,5000
+arroz,1000
+campera,200
+lapicera,100
+zapato,100
+buzo,100

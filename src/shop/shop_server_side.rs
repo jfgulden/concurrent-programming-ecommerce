@@ -1,6 +1,7 @@
 use std::{net::SocketAddr, sync::Arc};
 
 use actix::{Actor, ActorContext, Context, Recipient, StreamHandler};
+use colored::Colorize;
 use futures::TryFutureExt;
 use tokio::{
     io::{split, AsyncBufReadExt, BufReader, WriteHalf},
@@ -39,7 +40,10 @@ impl StreamHandler<Result<String, std::io::Error>> for ShopServerSide {
 
     /// Handles the disconnection of the ecom
     fn finished(&mut self, ctx: &mut Self::Context) {
-        println!("[ECOM {:?}] Desconectado", self.addr.port());
+        println!(
+            "{}",
+            format!("[ECOM {:?}] Desconectado", self.addr.port()).purple()
+        );
         ctx.stop();
     }
 }
@@ -55,7 +59,10 @@ pub async fn initiate_shop_server_side(
         .await?;
 
     while let Ok((stream, addr)) = listener.accept().await {
-        println!("[ECOM] Se conectó el Ecommerce {:?}", addr);
+        println!(
+            "{}",
+            format!("[ECOM] Se conectó el Ecommerce {:?}", addr.port()).purple()
+        );
         let shop_recipient = shop_recipient.clone();
         ShopServerSide::create(|ctx| {
             let (read, write_half) = split(stream);

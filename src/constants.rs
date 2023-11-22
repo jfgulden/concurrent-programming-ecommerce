@@ -10,4 +10,4 @@ pub const ECOM_PROCESING_MILLIS: RangeInclusive<u64> = 250..=400; // non-blockin
 
 pub const ECOM_MAX_WAITING_MILLIS: u64 = 5000; // non-blocking
 
-pub const DELIVER_LOST_RATE: f64 = 0.5;
+pub const DELIVER_RATE: f64 = 0.75;

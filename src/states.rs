@@ -1,7 +1,7 @@
 use colored::Colorize;
 use rand::{thread_rng, Rng};
 
-use crate::constants::DELIVER_LOST_RATE;
+use crate::constants::DELIVER_RATE;
 
 //LocalPurchase solo va a tener 3 estados: CREATED, SOLD o REJECTED.
 #[derive(Debug, Clone, PartialEq)]
@@ -40,7 +40,7 @@ impl OnlinePurchaseState {
         }
     }
     pub fn deliver_attempt(&mut self) {
-        let is_delivered = thread_rng().gen_bool(DELIVER_LOST_RATE);
+        let is_delivered = thread_rng().gen_bool(DELIVER_RATE);
         if is_delivered {
             *self = OnlinePurchaseState::DELIVERED;
         } else {

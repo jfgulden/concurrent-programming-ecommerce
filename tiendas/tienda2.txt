@@ -6,3 +6,10 @@ zapato,100
 gorro,500
 guante,240
 remera,5000
+manzana,100
+arroz,200
+banana,54
+fernet,2
+camisa,100
+pantalon,200
+zapatilla,100
