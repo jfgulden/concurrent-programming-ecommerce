@@ -2,50 +2,14 @@ use actix_rt::System;
 use concurrentes::error::FileError;
 use concurrentes::shop::process_local_orders::ProcessLocalOrders;
 use concurrentes::shop::shop_actor::Shop;
-use concurrentes::shop::shop_server_side::ShopServerSide;
-use futures::TryFutureExt;
+use concurrentes::shop::shop_server_side::initiate_shop_server_side;
 use std::env;
 use std::io::{stdin, stdout, Write};
-use std::sync::Arc;
-use tokio::io::{split, AsyncBufReadExt, BufReader};
-use tokio::net::TcpListener;
-use tokio::sync::Mutex;
-use tokio_stream::wrappers;
 extern crate actix;
-use actix::{Actor, StreamHandler};
+use actix::Actor;
 use std::path::Path;
 
 const CANT_ARGS: usize = 2;
-
-async fn initiate_shop_side_server(
-    shop: &actix::Addr<Shop>,
-    address: String,
-) -> Result<(), String> {
-    let listener: TcpListener = TcpListener::bind(address.as_str())
-        .map_err(|_| String::from("Error listening port"))
-        .await?;
-
-    while let Ok((stream, addr)) = listener.accept().await {
-        println!("[ECOM] Se conectó el Ecommerce {:?}", addr);
-        ShopServerSide::create(|ctx| {
-            let (read, write_half) = split(stream);
-            ShopServerSide::add_stream(
-                wrappers::LinesStream::new(BufReader::new(read).lines()),
-                ctx,
-            );
-
-            let write = Arc::new(Mutex::new(write_half));
-
-            ShopServerSide {
-                addr,
-                write,
-                shop_addr: shop.clone(),
-            }
-        });
-    }
-
-    Ok(())
-}
 
 fn main() {
     let system = System::new();
@@ -87,7 +51,7 @@ fn main() {
             System::current().stop();
             return;
         };
-        if let Err(err) = initiate_shop_side_server(&shop, address).await {
+        if let Err(err) = initiate_shop_server_side(shop.recipient(), address).await {
             println!("ERROR: {:?}", err);
             System::current().stop()
         };

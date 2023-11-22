@@ -15,6 +15,7 @@ mod tests {
             local_purchase::LocalPurchase,
             online_purchase::OnlinePurchase,
             shop_actor::{Product, Shop},
+            shop_server_side::initiate_shop_server_side,
         },
         states::{LocalPurchaseState, OnlinePurchaseState},
     };
@@ -90,52 +91,52 @@ mod tests {
         }
     }
 
-    // #[actix_rt::test]
-    // async fn test_connected_shop_receive_order() {
-    //     let (tx, rx) = mpsc::channel();
+    #[actix_rt::test]
+    async fn test_connected_shop_receive_order() {
+        let (tx, rx) = mpsc::channel();
 
-    //     thread::spawn(|| {
-    //         let system = System::new();
-    //         system.block_on(async {
-    //             let shop_mocker: Recipient<OnlinePurchase> =
-    //                 Mocker::<OnlinePurchase>::mock(Box::new(move |msg, _ctx| {
-    //                     let purchase = msg.downcast_ref::<OnlinePurchase>().unwrap().clone();
-    //                     tx.send(purchase).unwrap();
-    //                     msg
-    //                 }))
-    //                 .start()
-    //                 .recipient();
+        thread::spawn(|| {
+            let system = System::new();
+            system.block_on(async {
+                let shop_mocker: Recipient<OnlinePurchase> =
+                    Mocker::<OnlinePurchase>::mock(Box::new(move |msg, _ctx| {
+                        let purchase = msg.downcast_ref::<OnlinePurchase>().unwrap().clone();
+                        tx.send(purchase).unwrap();
+                        msg
+                    }))
+                    .start()
+                    .recipient();
 
-    //             initiate_shop_server_side(shop_mocker, "localhost:8766".to_string())
-    //                 .await
-    //                 .unwrap();
-    //         });
-    //         system.run().unwrap();
-    //     });
+                initiate_shop_server_side(shop_mocker, "localhost:8766".to_string())
+                    .await
+                    .unwrap();
+            });
+            system.run().unwrap();
+        });
 
-    //     thread::sleep(Duration::from_millis(1000));
+        thread::sleep(Duration::from_millis(1000));
 
-    //     let stream = std::net::TcpStream::connect("localhost:8766").unwrap();
-    //     let (_read, mut write) = tokio::io::split(TcpStream::from_std(stream).unwrap());
+        let stream = std::net::TcpStream::connect("localhost:8766").unwrap();
+        let (_read, mut write) = tokio::io::split(TcpStream::from_std(stream).unwrap());
 
-    //     let ecom_order = EcomOrder {
-    //         id: 1,
-    //         quantity: 1,
-    //         product_id: "A".to_string(),
-    //         shops_requested: vec![1],
-    //         zone_id: 1,
-    //     };
+        let ecom_order = EcomOrder {
+            id: 1,
+            quantity: 1,
+            product_id: "A".to_string(),
+            shops_requested: vec![1],
+            zone_id: 1,
+        };
 
-    //     write
-    //         .write_all(ecom_order.to_string().as_bytes())
-    //         .await
-    //         .unwrap();
+        write
+            .write_all(ecom_order.as_string().as_bytes())
+            .await
+            .unwrap();
 
-    //     let received = rx.recv().unwrap();
-    //     assert!(received.id == 1);
-    //     assert!(received.product == "A".to_string());
-    //     assert!(received.quantity == 1);
-    //     assert!(received.zone_id == 1);
-    //     assert!(received.state == OnlinePurchaseState::RECEIVED);
-    // }
+        let received = rx.recv().unwrap();
+        assert!(received.id == 1);
+        assert!(received.product == "A".to_string());
+        assert!(received.quantity == 1);
+        assert!(received.zone_id == 1);
+        assert!(received.state == OnlinePurchaseState::RECEIVED);
+    }
 }
