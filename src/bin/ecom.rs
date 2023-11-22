@@ -1,0 +1,80 @@
+use actix::{Actor, System};
+use concurrentes::ecom::connect_shops::ConnectShops;
+use concurrentes::ecom::ecom_actor::Ecom;
+use concurrentes::ecom::process_ecom_orders::ProcessEcomOrders;
+use concurrentes::error::FileError;
+// use concurrentes::messages::process_orders::ProcessOrders;
+use std::io::{stdin, stdout, Write};
+use std::{env, path::Path};
+
+const CANT_ARGS: usize = 2;
+
+fn main() {
+    let system = System::new();
+
+    system.block_on(async {
+        let args = match get_args() {
+            Ok(args) => args,
+            Err(_) => {
+                System::current().stop();
+                return;
+            }
+        };
+        let ecom: Ecom = match Ecom::from_file(args[1].as_str()) {
+            Ok(ecom) => ecom,
+            Err(error) => {
+                println!("ERROR ecom: {:?}", error);
+                System::current().stop();
+                return;
+            }
+        };
+        let ecom_actor = ecom.start();
+
+        start_on_enter();
+
+        if let Err(error) = ecom_actor.send(ConnectShops).await {
+            println!("ERROR conectando shops: {:?}", error);
+            System::current().stop();
+            return;
+        };
+
+        let orders = match Ecom::orders_from_file(args[1].as_str()) {
+            Ok(orders) => orders,
+            Err(error) => {
+                println!("ERROR obteniendo orders: {:?}", error);
+                System::current().stop();
+                return;
+            }
+        };
+
+        if let Err(error) = ecom_actor.send(ProcessEcomOrders(orders)).await {
+            println!("ERROR procesando ordenes: {:?}", error);
+            System::current().stop();
+            return;
+        };
+    });
+    if system.run().is_err() {
+        println!("ERROR: system error");
+    }
+}
+
+fn get_args() -> Result<Vec<String>, FileError> {
+    let args: Vec<String> = env::args().collect();
+    if args.len() < CANT_ARGS {
+        println!("ERROR: ecom file not provided");
+        return Err(FileError::NotFound);
+    }
+    let path_ecom = Path::new(&args[1]);
+    if !path_ecom.exists() {
+        println!("ERROR: path from shop information does not exist");
+        return Err(FileError::NotFound);
+    }
+    Ok(args)
+}
+
+fn start_on_enter() {
+    println!("Presione enter para comenzar");
+    let _ = stdout().flush();
+    let mut input = String::new();
+    let _ = stdin().read_line(&mut input);
+}

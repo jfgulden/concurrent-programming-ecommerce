@@ -1,0 +1,12 @@
+buzo,2
+campera,5
+fernet,1
+zapato,4
+remera,3
+remera,4
+remera,5
+remera,6
+remera,7
+remera,8
+zapato,5
+gorro,4

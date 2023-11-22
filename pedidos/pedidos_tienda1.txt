@@ -2,3 +2,9 @@ manzana,2
 banana,5
 fernet,1
 huevo,12
+pelota,3
+pelota,4
+pelota,5
+pelota,6
+pelota,7
+pelota,8

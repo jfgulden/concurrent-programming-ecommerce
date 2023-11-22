@@ -1,13 +1,10 @@
-use crate::error::{FileError, PurchaseError};
-use crate::messages::ecommerce_purchase::EcommercePurchase;
-use crate::messages::local_purchase::*;
-use crate::messages::print::Print;
-use actix::{Actor, ActorFutureExt, Context, Handler, ResponseActFuture, WrapFuture};
-use actix_rt::time::sleep;
-use rand::{thread_rng, Rng};
+use crate::error::FileError;
+use crate::shop::local_purchase::LocalPurchase;
+use crate::states::LocalPurchaseState;
+use actix::{Actor, Context};
+
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
-use std::time::Duration;
 
 #[derive(Debug)]
 pub struct Product {
@@ -88,64 +85,38 @@ impl Shop {
 
         Ok(shop)
     }
+
+    pub fn orders_from_file(path: &str) -> Result<Vec<LocalPurchase>, FileError> {
+        let file = File::open(path).map_err(|_| FileError::NotFound)?;
+        let reader = BufReader::new(file);
+
+        let mut orders = Vec::new();
+
+        for line in reader.lines() {
+            let current_line = line.map_err(|_| FileError::WrongFormat)?;
+            let line_slices: Vec<&str> = current_line.split(',').collect();
+
+            if line_slices.len() != 2 {
+                return Err(FileError::WrongFormat);
+            }
+
+            let order = LocalPurchase {
+                product: line_slices[0].to_string(),
+                quantity: line_slices[1].parse().map_err(|_| FileError::WrongFormat)?,
+                status: LocalPurchaseState::CREATED,
+            };
+
+            orders.push(order);
+        }
+
+        Ok(orders)
+    }
 }
 
 impl Actor for Shop {
     type Context = Context<Self>;
-}
 
-impl Handler<LocalPurchase> for Shop {
-    type Result = Result<(), PurchaseError>;
-
-    fn handle(&mut self, msg: LocalPurchase, _ctx: &mut Context<Self>) -> Self::Result {
-        // thread::sleep(Duration::from_millis(thread_rng().gen_range(500..1500)));
-
-        let product = match self.stock.iter_mut().find(|p| p.id == msg.product_id) {
-            Some(product) => product,
-            None => {
-                msg.print_cancelled();
-                return Err(PurchaseError::OutOfStock);
-            }
-        };
-
-        if product.stock < msg.quantity {
-            msg.print_cancelled();
-            return Err(PurchaseError::OutOfStock);
-        }
-
-        product.stock -= msg.quantity;
-
-        println!(
-            "[LOCAL] Vendido   {:>2} x {}, quedan {}",
-            msg.quantity, msg.product_id, product.stock
-        );
-
-        Ok(())
-    }
-}
-
-impl Handler<EcommercePurchase> for Shop {
-    type Result = ResponseActFuture<Self, Result<(), PurchaseError>>;
-
-    fn handle(&mut self, msg: EcommercePurchase, _ctx: &mut Context<Self>) -> Self::Result {
-        // thread::sleep(Duration::from_millis(thread_rng().gen_range(500..1500)));
-
-        println!("[ECOMM] Reserva   {:>2} x {}", msg.quantity, msg.product_id);
-
-        let millis = thread_rng().gen_range(500..=500);
-        Box::pin(sleep(Duration::from_millis(millis)).into_actor(self).map(
-            move |_result, _me, _ctx| {
-                println!("[ECOMM] Entregado {:>2} x {}", msg.quantity, msg.product_id);
-                Ok(())
-            },
-        ))
-    }
-}
-
-impl Handler<Print> for Shop {
-    type Result = ();
-
-    fn handle(&mut self, _msg: Print, _ctx: &mut Context<Self>) -> Self::Result {
-        println!("{:?}", self);
+    fn started(&mut self, _ctx: &mut Context<Self>) {
+        println!("INICIANDO TIENDA [{:?}]", self.location);
     }
 }

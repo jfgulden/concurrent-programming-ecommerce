@@ -1,7 +1,8 @@
-retiro,localhost:123,1
+retiro,localhost:2346,1
 ----------------------
-manzana,10
-banana,20
-coca,10
-galleta,5
-huevo,24
+manzana,100
+banana,200
+coca,100
+galleta,50
+huevo,240
+pelota,5000
