@@ -89,7 +89,7 @@ impl OnlinePurchase {
         println!(
             "[ECOM {}]  {} {:>2} x {}",
             self.ecom,
-            self.state.to_string(),
+            self.state.string_to_print(),
             self.quantity,
             self.product
         );

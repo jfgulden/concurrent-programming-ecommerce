@@ -10,20 +10,18 @@ use super::{connected_shops::ConnectedShop, ecom_actor::Ecom};
 
 pub fn connection_handling(ecom: Addr<Ecom>) {
     std::thread::spawn(move || {
-        for line in std::io::stdin().lines() {
-            if let Ok(command) = line {
-                let (command, tienda_id) = match parse_command(command) {
-                    Ok((command, tienda_id)) => (command, tienda_id),
-                    Err(e) => {
-                        println!("Error: {:?}", e);
-                        continue;
-                    }
-                };
-                if command == "s" {
-                    ecom.do_send(Stop(tienda_id));
-                } else if command == "r" {
-                    ecom.do_send(Reconnect(tienda_id));
+        for line in std::io::stdin().lines().flatten() {
+            let (command, tienda_id) = match parse_command(line) {
+                Ok((command, tienda_id)) => (command, tienda_id),
+                Err(e) => {
+                    println!("Error: {:?}", e);
+                    continue;
                 }
+            };
+            if command == "s" {
+                ecom.do_send(Stop(tienda_id));
+            } else if command == "r" {
+                ecom.do_send(Reconnect(tienda_id));
             }
         }
     });

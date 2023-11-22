@@ -65,12 +65,10 @@ impl Handler<FowardOrder> for Ecom {
                         None => return, // no es mas pendiente, ya se entrego o fue cancelada por no haber mas tiendas
                     };
 
-                    if msg.shop.zone_id == order.shops_requested.last().unwrap_or(&-1).clone() {
+                    if msg.shop.zone_id == *order.shops_requested.last().unwrap_or(&-1) {
                         println!("[ECOM] PERDIDO  {}x {}", order.quantity, order.product_id);
                         ctx.address().do_send(ProcessOrder(order.clone()));
                     } // caso contrario, sigue pendiente pero ya fue enviada a otra tienda
-
-                    return;
                 }),
         );
     }

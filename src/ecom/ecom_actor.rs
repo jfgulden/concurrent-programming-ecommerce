@@ -82,8 +82,7 @@ impl Ecom {
         // ignore dash line
         lines.next();
 
-        let mut line_number = 0;
-        for line in lines {
+        for (line_number, line) in lines.enumerate() {
             let current_line = line.map_err(|_| FileError::WrongFormat)?;
 
             let product_data: Vec<&str> = current_line.split(',').collect();
@@ -93,7 +92,7 @@ impl Ecom {
                 return Err(FileError::WrongFormat);
             }
             let ecom_order = EcomOrder {
-                id: line_number,
+                id: line_number as u32,
                 product_id: product_data[0].to_string(),
                 quantity: product_data[1]
                     .parse()
@@ -105,7 +104,6 @@ impl Ecom {
             };
 
             orders.push(ecom_order);
-            line_number += 1;
         }
 
         Ok(orders)
@@ -121,12 +119,9 @@ impl Ecom {
             }
         });
 
-        for shop in shops {
-            if !order.shops_requested.contains(&shop.zone_id) {
-                return Some(shop);
-            }
-        }
-        None
+        shops
+            .into_iter()
+            .find(|shop| !order.shops_requested.contains(&shop.zone_id))
     }
 
     pub fn connect_shop(
@@ -191,7 +186,7 @@ impl StreamHandler<Result<String, std::io::Error>> for Ecom {
             println!(
                 "{} Pedido {}: {:<2}x {}",
                 format!("[TIENDA {}]", order.shops_requested.last().unwrap_or(&-1)).blue(),
-                state.to_string(),
+                state.string_to_print(),
                 order.quantity,
                 order.product_id
             );

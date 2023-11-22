@@ -11,7 +11,7 @@ pub enum LocalPurchaseState {
     REJECTED,
 }
 impl LocalPurchaseState {
-    pub fn to_string(&self) -> String {
+    pub fn string_to_print(&self) -> String {
         match self {
             LocalPurchaseState::CREATED => "CREADO".to_string(),
             LocalPurchaseState::SOLD => "VENDIDO".green().to_string(),
@@ -30,7 +30,7 @@ pub enum OnlinePurchaseState {
     LOST,
 }
 impl OnlinePurchaseState {
-    pub fn to_string(&self) -> String {
+    pub fn string_to_print(&self) -> String {
         match self {
             OnlinePurchaseState::RECEIVED => "RECIBIDO".to_string(),
             OnlinePurchaseState::RESERVED => "RESERVADO".yellow().to_string(),
@@ -70,6 +70,6 @@ impl OnlinePurchaseState {
 
 impl PartialEq for OnlinePurchaseState {
     fn eq(&self, other: &Self) -> bool {
-        self.to_string() == other.to_string()
+        self.string_to_print() == other.string_to_print()
     }
 }

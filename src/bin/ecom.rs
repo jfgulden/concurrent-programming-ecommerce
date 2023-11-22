@@ -52,8 +52,7 @@ fn main() {
 
         if let Err(error) = ecom.send(ProcessEcomOrders(orders)).await {
             println!("ERROR procesando ordenes: {:?}", error);
-            System::current().stop();
-            return;
+            System::current().stop()
         };
     });
     if system.run().is_err() {

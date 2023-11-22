@@ -17,7 +17,7 @@ impl LocalPurchase {
     pub fn print_status(&self) {
         println!(
             "[LOCAL]  {} {:>2} x {}",
-            self.status.to_string(),
+            self.status.string_to_print(),
             self.quantity,
             self.product
         );

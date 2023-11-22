@@ -89,8 +89,7 @@ fn main() {
         };
         if let Err(err) = initiate_shop_side_server(&shop, address).await {
             println!("ERROR: {:?}", err);
-            System::current().stop();
-            return;
+            System::current().stop()
         };
     });
     if system.run().is_err() {
@@ -116,7 +115,7 @@ fn get_args() -> Result<Vec<String>, FileError> {
         return Err(FileError::NotFound);
     }
 
-    return Ok(args);
+    Ok(args)
 }
 
 fn enter_to_start() {
